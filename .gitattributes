@@ -1,0 +1,2 @@
+# Vendored hanword: keep byte-exact on every OS (VENDOR.md sha256 list; no CRLF on Windows checkout)
+src/gyeoljae/vendor/hanword/** -text
