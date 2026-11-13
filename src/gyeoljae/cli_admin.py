@@ -84,8 +84,10 @@ def add_admin_parsers(sp):
     s = sp.add_parser("setting", help="설정")
     ss = s.add_subparsers(dest="sub", required=True)
     ss.add_parser("list")
-    x = ss.add_parser("set"); x.add_argument("key", choices=["two_person", "show_contacts", "emp_digits", "doc_number", "allow_freeform"])
-    x.add_argument("value", help="on/off, emp_digits 는 2 또는 3, doc_number 는 예: {dept}-{year}-{seq}")
+    x = ss.add_parser("set"); x.add_argument("key", choices=["two_person", "show_contacts", "emp_digits", "doc_number", "allow_freeform",
+                                                            "company_name", "doc_mark", "paper_default"])
+    x.add_argument("value", help="on/off, emp_digits 는 2 또는 3, doc_number 는 예: {dept}-{year}-{seq}, "
+                                 "company_name 은 회사명, doc_mark 는 문서 표시(예: 대외비, 20자 이내·빈 값=없음), paper_default 는 corporate/gov")
 
     s = sp.add_parser("form", help="양식(서식) — 목록·보기, 관리자는 추가·복사·수정·사용중지")
     ss = s.add_subparsers(dest="sub", required=True)

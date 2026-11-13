@@ -138,6 +138,7 @@ def build_parser():
     s = sp.add_parser("list", help="문서함"); s.add_argument("--box", default="inbox", choices=BOXES)
     s = sp.add_parser("show", help="문서 보기"); s.add_argument("id", type=int)
     s.add_argument("--file", type=int, help="첨부 번호 저장"); s.add_argument("-o", "--output")
+    s.add_argument("--html", action="store_true", help="편집기 문서 HTML 출력")
     s = sp.add_parser("search", help="검색")
     s.add_argument("-q", "--query"); s.add_argument("--title"); s.add_argument("--drafter"); s.add_argument("--dept")
     s.add_argument("--status", choices=list(core.STATUS_KO)); s.add_argument("--from", dest="date_from")
@@ -233,14 +234,16 @@ def run(args, app: App):
     if c == "draft":
         m = app.create_draft(a, args.title, _body(args) or "", _split(args.line), _split(args.cc),
                              "dept" if args.dept_open else "private", _files(args.attach), submit=args.submit,
-                             doc_type=args.type, amount=args.amount, form=args.form, fields=_cli_fields(args))
+                             doc_type=args.type, amount=args.amount, form=args.form, fields=_cli_fields(args),
+                             doc_html=_doc_html(args))
         return out(args, m, f"기안 #{m['id']} ({m['status_ko']})"
                    + (f" 양식 {m['form']['name']} v{m['form']['version']}" if m.get("form") else "")
                    + (f" 금액 {m['amount']:,}원" if m.get("amount") is not None else ""))
     if c == "edit":
         m = app.edit_draft(a, args.id, args.title, _body(args), _split(args.line) if args.line else None,
                            _split(args.cc) if args.cc is not None else None, None, _files(args.attach), args.remove,
-                           doc_type=args.type, amount=args.amount, fields=_merge_fields(app, a, args))
+                           doc_type=args.type, amount=args.amount, fields=_merge_fields(app, a, args),
+                           doc_html=_doc_html(args))
         return out(args, m, f"수정 #{m['id']}")
     if c in ("submit", "withdraw"):
         m = getattr(app, c)(a, args.id)
@@ -263,6 +266,8 @@ def run(args, app: App):
             dest.write_bytes(path.read_bytes())
             return out(args, {"saved": str(dest)}, f"저장: {dest}")
         m = app.show(a, args.id)
+        if args.html:
+            return out(args, {"id": m["id"], "doc_html": m.get("doc_html")}, m.get("doc_html") or "(편집기 문서 아님)")
         return out(args, m, fmt_doc(m))
     if c in ("search", "number"):
         if c == "number":
@@ -358,6 +363,11 @@ def _form_args(s, edit=False):
     s.add_argument("--row", action="append", default=[], metavar="표키:열=값;열=값",
                    help="표 행 추가. 예: items:item=모니터;qty=2;price=30만")
     s.add_argument("--fields-json", help="항목 전체를 JSON 파일로")
+    s.add_argument("--doc-html", metavar="FILE", help="편집기 문서 HTML(서식 칸 data-field 에서 항목을 뽑아 검증)")
+
+
+def _doc_html(args):
+    return Path(args.doc_html).read_text(encoding="utf-8") if getattr(args, "doc_html", None) else None
 
 
 def _cli_fields(args):

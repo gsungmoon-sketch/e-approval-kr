@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<!-- 생성 파일: scripts/build_embed.py (index.html 에서) — 직접 고치지 말 것 -->
+<html lang="ko" data-wp-embed>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한워드 편집기</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <!-- ① 메뉴 막대 + 문서이름/상태(메뉴 우측 빈 공간 활용) -->
+  <div id="topbar">
+    <div id="menubar"></div>
+    <div id="infobar">
+      <input id="docname" value="제목 없음" autocomplete="off" spellcheck="false">
+      <label id="autosave-lbl" title="30초마다 자동 저장(끄면 Ctrl+S 수동)" style="font-size:11px;color:#666;display:inline-flex;align-items:center;gap:2px;white-space:nowrap;margin:0 4px"><input type="checkbox" id="autosave" style="margin:0;width:13px;height:13px"> 자동</label>
+      <span id="status"></span>
+    </div>
+  </div>
+  <!-- 풀다운 컨테이너 -->
+  <div id="dropdown" class="hidden"></div>
+
+  <!-- ② 서식 도구 상자 -->
+  <div id="toolbar">
+    <select id="styleSel" class="t-sel" title="스타일(F6)">
+      <option value="P">바탕글</option>
+      <option value="H1">제목 1</option>
+      <option value="H2">제목 2</option>
+      <option value="H3">제목 3</option>
+    </select>
+    <select id="fontSel" class="t-sel" title="글꼴">
+      <option value='"함초롬돋움","NotoKR",sans-serif'>함초롬돋움</option>
+      <option value='"함초롬바탕","NotoKR",serif'>함초롬바탕</option>
+          <option value='"UnBatang","NotoKR",serif'>은바탕(KTUG)</option>
+      <option value='"맑은 고딕","NotoKR",sans-serif'>맑은 고딕</option>
+      <option value='"나눔고딕","NanumGothic","NotoKR",sans-serif'>나눔고딕</option>
+      <option value='"굴림","NotoKR",sans-serif'>굴림</option>
+      <option value='"돋움","NotoKR",sans-serif'>돋움</option>
+      <option value='"바탕","NotoKR",serif'>바탕</option>
+      <option value='"궁서","NotoKR",serif'>궁서</option>
+      <option value='"HY견고딕","NotoKR",sans-serif'>HY견고딕</option>
+      <option value='"D2Coding","NotoKR",monospace'>고정폭</option>
+    </select>
+    <select id="sizeSel" class="t-sel sm" title="글자 크기">
+      <option>8</option><option>9</option><option>10</option><option selected>11</option>
+      <option>12</option><option>14</option><option>16</option><option>18</option>
+      <option>20</option><option>24</option><option>28</option><option>36</option>
+    </select>
+    <button class="t-btn" data-act="smaller" title="작게(Ctrl+[)">A⁻</button>
+    <button class="t-btn" data-act="bigger" title="크게(Ctrl+])">A⁺</button>
+    <span class="t-sep"></span>
+    <button class="t-btn" data-act="bold" title="진하게(Ctrl+B)"><b>가</b></button>
+    <button class="t-btn" data-act="italic" title="기울임(Ctrl+I)"><i>가</i></button>
+    <button class="t-btn" data-act="underline" title="밑줄(Ctrl+U)"><u>가</u></button>
+    <button class="t-btn" data-act="formatCopy" title="모양 복사(Alt+C)">🖌</button>
+    <span class="t-sep"></span>
+    <button class="t-btn" data-act="justifyLeft" title="왼쪽(Ctrl+Shift+L)">⬅</button>
+    <button class="t-btn" data-act="justifyCenter" title="가운데(Ctrl+Shift+C)">⬌</button>
+    <button class="t-btn" data-act="justifyRight" title="오른쪽(Ctrl+Shift+R)">➡</button>
+    <button class="t-btn" data-act="justifyFull" title="양쪽(Ctrl+Shift+M)">▤</button>
+    <button class="t-btn" data-act="insertUnorderedList" title="글머리표">•</button>
+    <button class="t-btn" data-act="insertOrderedList" title="번호 매기기">1.</button>
+    <button class="t-btn" data-act="indentLess" title="내어쓰기">⇤</button>
+    <button class="t-btn" data-act="indentMore" title="들여쓰기">⇥</button>
+    <span class="t-sep"></span>
+    <button class="t-btn" data-act="charDlg" title="글자 모양(Alt+L)">글자</button>
+    <button class="t-btn" data-act="paraDlg" title="문단 모양(Alt+T)">문단</button>
+    <button class="t-btn" data-act="shapeBox" title="도형 그리기(사각형·원·선)">도형▾</button>
+  </div>
+
+  <!-- 표 도구 막대 (표 안에 커서 있을 때만 표시) -->
+  <div id="tabletools" class="hidden">
+    <span class="tt-label">표</span>
+    <button class="t-btn" data-tt="placeChar" title="글자처럼 배치(정렬로 이동)">글자</button>
+    <button class="t-btn" data-tt="placeFixed" title="고정 배치(손잡이로 끌어 이동)">고정</button>
+    <button class="t-btn" data-tt="placeFloat" title="문단 배치(어울림: 글자가 표를 좌/우로 피해감)">문단</button>
+    <button class="t-btn" data-tt="offXm" title="표 왼쪽(글자처럼)">↤</button>
+    <button class="t-btn" data-tt="offXc" title="표 가운데(글자처럼)">▣</button>
+    <button class="t-btn" data-tt="offXp" title="표 오른쪽(글자처럼)">↦</button>
+    <button class="t-btn" data-tt="copyTable" title="복사: 셀블록(F5) 선택 시 블록만 복사 → 표 셀에 붙이면 채우고 본문에 붙이면 새 표 / 아니면 표 전체">복사</button>
+    <button class="t-btn" data-tt="cutTable" title="표 오려두기">오림</button>
+    <button class="t-btn danger" data-tt="delTable" title="표 삭제">표✕</button>
+    <span class="t-sep"></span>
+    <button class="t-btn" data-tt="rowAbove" title="위에 줄 추가">↑줄</button>
+    <button class="t-btn" data-tt="rowBelow" title="아래에 줄 추가">↓줄</button>
+    <button class="t-btn" data-tt="colLeft" title="왼쪽에 칸 추가">←칸</button>
+    <button class="t-btn" data-tt="colRight" title="오른쪽에 칸 추가">칸→</button>
+    <button class="t-btn" data-tt="delRow" title="줄 지우기">줄✕</button>
+    <button class="t-btn" data-tt="delCol" title="칸 지우기">칸✕</button>
+    <span class="t-sep"></span>
+    <button class="t-btn" data-tt="merge" title="셀 합치기">병합</button>
+    <button class="t-btn" data-tt="split" title="셀 나누기">나눔</button>
+    <button class="t-btn" data-tt="joinTable" title="표 붙이기: 바로 아래 표와 합침(열 수 같을 때)">표+</button>
+    <button class="t-btn" data-tt="splitTable" title="표 나누기: 캐럿 행 기준 위/아래 두 표로">표−</button>
+    <button class="t-btn" data-tt="border" title="셀 테두리 그리기(실선·점선·파선·이중선·숨김)">⊞</button>
+    <input type="color" id="cellbg" value="#ffff99" title="셀 배경색(F5→C)" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+  </div>
+
+  <!-- 도형/개체 도구상자 — 도형▾ 토글 또는 개체 선택 시 도구모음 아래에 표시. 앞쪽=도형 그리기(작은 아이콘), 뒤=개체 편집 -->
+  <div id="objtools" class="hidden">
+    <span class="ot-label">도형</span>
+    <button class="t-btn ins" data-shape="rect" title="사각형 그리기">▭</button>
+    <button class="t-btn ins" data-shape="circle" title="원 그리기">◯</button>
+    <button class="t-btn ins" data-shape="line" title="선 그리기">╱</button>
+    <span class="t-sep"></span>
+    <button class="t-btn" data-obj="place" title="배치 토글: 글자처럼→어울림좌→어울림우→자유배치">배치</button>
+    <button class="t-btn" data-obj="rotL" title="왼쪽으로 15° 회전">↺</button>
+    <button class="t-btn" data-obj="rotR" title="오른쪽으로 15° 회전">↻</button>
+    <button class="t-btn" data-obj="flipH" title="좌우 반전">⇋</button>
+    <button class="t-btn" data-obj="flipV" title="상하 반전">⇅</button>
+    <button class="t-btn" data-obj="addsel" title="다중 선택 모드: 켠 뒤 개체들을 탭해 추가/해제">＋선택</button>
+    <button class="t-btn" data-obj="group" title="선택 개체 묶기(2개 이상)">묶기</button>
+    <button class="t-btn" data-obj="ungroup" title="묶은 개체 풀기">풀기</button>
+    <button class="t-btn" data-obj="align" title="정렬/배분/같은 크기(2개 이상)">맞춤▾</button>
+    <button class="t-btn" data-obj="zorder" title="겹침 순서(앞/뒤)">순서▾</button>
+    <button class="t-btn" data-obj="crop" title="이미지 자르기">✂</button>
+    <button class="t-btn" data-obj="style" title="도형 색·선 스타일">스타일▾</button>
+    <button class="t-btn" data-obj="copy" title="개체 복사(붙이기로 삽입)">복사</button>
+    <button class="t-btn danger" data-obj="del" title="개체 삭제(또는 Delete)">✕</button>
+  </div>
+  <div id="aligntools" class="hidden">
+    <button class="t-btn" data-al="left" title="왼쪽 맞춤">⇤</button>
+    <button class="t-btn" data-al="hcenter" title="가로 가운데 맞춤">⇔</button>
+    <button class="t-btn" data-al="right" title="오른쪽 맞춤">⇥</button>
+    <button class="t-btn" data-al="top" title="위 맞춤">⤒</button>
+    <button class="t-btn" data-al="vcenter" title="세로 가운데 맞춤">⇕</button>
+    <button class="t-btn" data-al="bottom" title="아래 맞춤">⤓</button>
+    <button class="t-btn" data-al="disth" title="가로 간격 동일(3개+)">↔</button>
+    <button class="t-btn" data-al="distv" title="세로 간격 동일(3개+)">↕</button>
+    <button class="t-btn" data-al="samew" title="폭 같게(대표 기준)">◫</button>
+    <button class="t-btn" data-al="sameh" title="높이 같게(대표 기준)">⬓</button>
+  </div>
+  <div id="croptools" class="hidden">
+    <button class="t-btn" data-crop="t" title="위쪽 자르기">위↓</button>
+    <button class="t-btn" data-crop="b" title="아래쪽 자르기">아래↑</button>
+    <button class="t-btn" data-crop="l" title="왼쪽 자르기">왼→</button>
+    <button class="t-btn" data-crop="r" title="오른쪽 자르기">오른←</button>
+    <button class="t-btn" data-crop="t-" title="위쪽 되돌리기">위↑</button>
+    <button class="t-btn" data-crop="b-" title="아래쪽 되돌리기">아래↓</button>
+    <button class="t-btn" data-crop="l-" title="왼쪽 되돌리기">왼←</button>
+    <button class="t-btn" data-crop="r-" title="오른쪽 되돌리기">오른→</button>
+    <button class="t-btn" data-crop="reset" title="자르기 초기화">초기화</button>
+  </div>
+  <div id="zordertools" class="hidden">
+    <button class="t-btn" data-z="front" title="맨 앞으로">⤒ 맨앞</button>
+    <button class="t-btn" data-z="forward" title="한 단계 앞으로">↑ 앞으로</button>
+    <button class="t-btn" data-z="backward" title="한 단계 뒤로">↓ 뒤로</button>
+    <button class="t-btn" data-z="back" title="맨 뒤로">⤓ 맨뒤</button>
+    <button class="t-btn" data-z="textfront" title="글 바로 앞으로">글앞</button>
+    <button class="t-btn" data-z="textback" title="글 뒤로(배경처럼 글이 위에)">글뒤</button>
+  </div>
+  <div id="placetools" class="hidden">
+    <button class="t-btn" data-pl="char" title="글자처럼: 글 흐름 속에서 큰 글자 취급(기본)">글자</button>
+    <button class="t-btn" data-pl="float" title="어울림 왼쪽: 글이 오른쪽으로 감쌈">어울림좌</button>
+    <button class="t-btn" data-pl="floatR" title="어울림 오른쪽: 글이 왼쪽으로 감쌈">어울림우</button>
+    <button class="t-btn" data-pl="fixed" title="쪽 고정: 글과 무관하게 그 자리에 붙박이">고정</button>
+  </div>
+  <div id="shapetools" class="hidden">
+    <div class="strow">
+      <button class="t-btn tgt on" data-target="fill" title="색을 채우기에 적용">채우기</button>
+      <button class="t-btn tgt" data-target="stroke" title="색을 선에 적용">선색</button>
+      <button class="t-btn" data-fill="none" title="채우기 없음(투명)">없음</button>
+    </div>
+    <div class="palette" id="sh-palette"></div>
+    <div class="strow">
+      <span class="stlbl">선</span>
+      <button class="t-btn" data-sw="-1" title="선 얇게">−</button>
+      <button class="t-btn" data-sw="1" title="선 굵게">+</button>
+      <button class="t-btn" data-dash="solid" title="실선">실</button>
+      <button class="t-btn" data-dash="dash" title="파선">┄</button>
+      <button class="t-btn" data-dash="dot" title="점선">⋯</button>
+    </div>
+  </div>
+
+  <!-- 눈금자(들여쓰기 드래그) -->
+  <div id="ruler"><div class="ticks"></div><div id="indentMarker" title="왼쪽 들여쓰기">▼</div></div>
+
+  <!-- ④ 문서 편집 영역 -->
+  <div id="pagewrap">
+    <div id="page" contenteditable="true" spellcheck="false"><p><br></p></div>
+  </div>
+
+  <!-- ===== 대화상자들 ===== -->
+  <div class="modal hidden" id="m-open"><div class="dlg">
+    <div class="dlg-h"><span id="m-open-title">불러오기</span><button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><div id="doclist"></div></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-char"><div class="dlg">
+    <div class="dlg-h">글자 모양<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>글꼴</label>
+        <select id="c-font"><option value='"함초롬돋움","NotoKR",sans-serif'>함초롬돋움</option>
+          <option value='"함초롬바탕","NotoKR",serif'>함초롬바탕</option>
+          <option value='"UnBatang","NotoKR",serif'>은바탕(KTUG)</option>
+          <option value='"맑은 고딕","NotoKR",sans-serif'>맑은 고딕</option>
+          <option value='"나눔고딕","NanumGothic","NotoKR",sans-serif'>나눔고딕</option>
+          <option value='"굴림","NotoKR",sans-serif'>굴림</option>
+          <option value='"돋움","NotoKR",sans-serif'>돋움</option>
+          <option value='"바탕","NotoKR",serif'>바탕</option>
+          <option value='"궁서","NotoKR",serif'>궁서</option>
+          <option value='"HY견고딕","NotoKR",sans-serif'>HY견고딕</option>
+          <option value='"D2Coding","NotoKR",monospace'>고정폭</option></select></div>
+      <div class="frow"><label>기준 크기</label>
+        <input id="c-size" type="number" min="6" max="96" value="11"> pt</div>
+      <div class="frow"><label>속성</label>
+        <span class="attrs">
+          <button class="att" data-att="bold"><b>진하게</b></button>
+          <button class="att" data-att="italic"><i>기울임</i></button>
+          <button class="att" data-att="underline"><u>밑줄</u></button>
+          <button class="att" data-att="strike"><s>취소선</s></button>
+          <button class="att" data-att="superscript" title="위 첨자">x²</button>
+          <button class="att" data-att="subscript" title="아래 첨자">x₂</button>
+        </span></div>
+      <div class="frow"><label>글자색</label>
+        <input id="c-color" type="hidden" value="#000000">
+        <span id="c-color-cur" class="cur-sw" title="현재 글자색"></span>
+        <div class="cpalette" data-for="c-color" data-cur="c-color-cur"></div>
+      </div>
+      <div class="frow"><label>자간</label><input id="c-spacing" type="number" min="-4" max="15" step="0.5" value="0"> pt</div>
+      <div class="frow"><label>음영색</label>
+        <input id="c-bg" type="hidden" value="#ffffff" data-none="1">
+        <span id="c-bg-cur" class="cur-sw" title="현재 음영색"></span>
+        <div class="cpalette" data-for="c-bg" data-cur="c-bg-cur"></div>
+        <button id="c-bg-none" class="mini">없음</button></div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="charApply">설정</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-para"><div class="dlg">
+    <div class="dlg-h">문단 모양<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>정렬 방식</label>
+        <span class="seg" id="p-align">
+          <button data-al="left">왼쪽</button><button data-al="center">가운데</button>
+          <button data-al="right">오른쪽</button><button data-al="justify">양쪽</button></span></div>
+      <div class="frow"><label>줄 간격</label><input id="p-line" type="number" min="80" max="300" step="10" value="160"> %</div>
+      <div class="frow"><label>왼쪽 여백</label><input id="p-ml" type="number" min="0" max="150" value="0"> pt</div>
+      <div class="frow"><label>오른쪽 여백</label><input id="p-mr" type="number" min="0" max="150" value="0"> pt</div>
+      <div class="frow"><label>첫 줄</label>
+        <select id="p-indkind"><option value="0">보통</option><option value="1">들여쓰기</option><option value="-1">내어쓰기</option></select>
+        <input id="p-ind" type="number" min="0" max="75" value="0"> pt</div>
+      <div class="frow"><label>문단 위/아래</label>
+        <input id="p-st" type="number" min="0" max="75" value="0"> / <input id="p-sb" type="number" min="0" max="75" value="0"> pt</div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="paraApply">설정</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-page"><div class="dlg">
+    <div class="dlg-h">편집 용지<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>용지 종류</label>
+        <select id="pg-paper">
+          <option value="A3">A3 (297×420)</option>
+          <option value="A4">A4 (210×297)</option>
+          <option value="A5">A5 (148×210)</option>
+          <option value="A6">A6 (105×148)</option>
+          <option value="B4">B4 (257×364)</option>
+          <option value="B5">B5 (182×257)</option>
+          <option value="B6">B6 (128×182)</option>
+          <option value="Letter">Letter (216×279)</option>
+          <option value="Legal">Legal (216×356)</option>
+          <option value="Tabloid">Tabloid (279×432)</option>
+        </select></div>
+      <div class="frow"><label>용지 방향</label>
+        <span class="seg" id="pg-orient"><button data-or="portrait">세로</button><button data-or="landscape">가로</button></span></div>
+      <div class="frow"><label>여백 미리 설정</label>
+        <select id="pg-preset" title="여백 묶음 설정(선택 시 아래 여백 칸을 채움)">
+          <option value="">직접 입력</option>
+          <option value="default">기본 (사방 20mm)</option>
+          <option value="gov">공문서 A4 (위30·왼20·오15·아래15)</option>
+        </select></div>
+      <div class="frow"><label>위/아래 여백</label>
+        <input id="pg-mt" type="number" min="0" max="60" value="20"> / <input id="pg-mb" type="number" min="0" max="60" value="20"> mm</div>
+      <div class="frow"><label>왼/오른 여백</label>
+        <input id="pg-ml" type="number" min="0" max="60" value="20"> / <input id="pg-mr" type="number" min="0" max="60" value="20"> mm</div>
+      <div class="frow"><label>쪽 테두리</label>
+        <select id="pg-border">
+          <option value="">없음</option>
+          <option value="solid">실선</option>
+          <option value="dotted">점선</option>
+          <option value="dashed">파선</option>
+          <option value="double">이중선</option>
+        </select>
+        <select id="pg-border-w">
+          <option value="1">1px</option>
+          <option value="2">2px</option>
+          <option value="3">3px</option>
+        </select></div>
+      <div class="frow"><label>쪽 배경색</label>
+        <input id="pg-bg" type="hidden"><span id="pg-bg-cur" class="cur-sw"></span>
+        <div class="cpalette" data-for="pg-bg" data-cur="pg-bg-cur"></div>
+        <button class="t-btn" id="pg-bg-none" type="button" title="배경색 없음">없음</button></div>
+      <div class="frow"><label>배경 그림 <span style="color:#c00000">(계획중)</span></label>
+        <span id="pg-bg-img-st" style="font-size:12px;color:#556">없음</span>
+        <button class="t-btn" id="pg-bg-clear" type="button" title="배경 그림 지우기" disabled>지우기</button>
+        <select id="pg-bg-size" title="배경 그림 채움" disabled>
+          <option value="cover">꽉 채움</option>
+          <option value="contain">맞춤</option>
+          <option value="repeat">바둑판</option>
+        </select></div>
+      <div class="dlg-hint">쪽 배경 <b>그림</b>: 문서에 그림을 넣고 선택 → 쪽 메뉴의 <b>선택 그림을 쪽 배경으로</b> 지정. 채움방식은 위에서 조절. ⚠️한글(HWPX) 저장에는 배경이 포함되지 않습니다(비호환).</div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="pageApply">설정</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-find"><div class="dlg">
+    <div class="dlg-h">찾기 / 바꾸기<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>찾을 내용</label><input id="f-q" type="text"></div>
+      <div class="frow"><label>바꿀 내용</label><input id="f-r" type="text"></div>
+      <div class="frow"><label>옵션</label><span class="attrs">
+        <label class="opt"><input type="checkbox" id="f-case"> 대/소문자</label>
+        <label class="opt"><input type="checkbox" id="f-word"> 낱말 단위</label>
+        <label class="opt"><input type="checkbox" id="f-regex"> 정규식</label>
+      </span></div>
+      <div class="frow"><label></label><span id="f-count" class="meta"></span></div>
+    </div>
+    <div class="dlg-f">
+      <button data-act="findPrev">◀ 이전</button>
+      <button class="ok" data-act="findNext">다음 ▶</button>
+      <button data-act="replaceOne">바꾸기</button>
+      <button data-act="replaceAll">모두 바꿈</button>
+      <button data-close>닫기</button>
+    </div>
+  </div></div>
+
+  <div class="modal hidden" id="m-link"><div class="dlg">
+    <div class="dlg-h" id="m-link-h">하이퍼링크<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>주소(URL)</label><input id="lk-url" type="text" placeholder="https://example.com 또는 name@메일"></div>
+      <div class="frow"><label>표시 문구</label><input id="lk-text" type="text" placeholder="(비우면 선택 텍스트/주소 사용)"></div>
+      <div class="dlg-hint">Ctrl+클릭으로 링크를 엽니다. http/https/mailto만 허용됩니다.</div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="linkApply">적용</button><button id="m-link-rm" data-act="linkRemove">링크 제거</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-table"><div class="dlg">
+    <div class="dlg-h">표 만들기<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>줄 수</label><input id="tb-r" type="number" min="1" max="30" value="3"></div>
+      <div class="frow"><label>칸 수</label><input id="tb-c" type="number" min="1" max="12" value="3"></div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="tableApply">만들기</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-split"><div class="dlg">
+    <div class="dlg-h">셀 나누기<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>줄 수</label><input id="sp-r" type="number" min="1" max="20" value="2"></div>
+      <div class="frow"><label>칸 수</label><input id="sp-c" type="number" min="1" max="12" value="2"></div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="splitApply">나누기</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-cellborder"><div class="dlg">
+    <div class="dlg-h">셀 테두리 · 배경색<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>선 종류</label>
+        <div class="lsel" id="ls-style">
+          <button type="button" class="lsel-btn" id="ls-style-btn"><span class="lprev" data-prev="solid"></span><span class="lsel-txt">실선</span><span class="lsel-arrow">▾</span></button>
+          <div class="lsel-list hidden">
+            <button type="button" class="bstyle on" data-style="solid"><span class="lprev" data-prev="solid"></span>실선</button>
+            <button type="button" class="bstyle" data-style="dotted"><span class="lprev" data-prev="dotted"></span>점선</button>
+            <button type="button" class="bstyle" data-style="dashed"><span class="lprev" data-prev="dashed"></span>파선</button>
+            <button type="button" class="bstyle" data-style="double"><span class="lprev" data-prev="double"></span>이중선</button>
+            <button type="button" class="bstyle" data-style="hidden"><span class="lprev" data-prev="hidden"></span>숨김</button>
+          </div>
+        </div>
+      </div>
+      <div class="frow"><label>선 굵기</label>
+        <div class="lsel" id="ls-width">
+          <button type="button" class="lsel-btn" id="ls-width-btn"><span class="lprev" data-prev="w1"></span><span class="lsel-txt">1px</span><span class="lsel-arrow">▾</span></button>
+          <div class="lsel-list hidden">
+            <button type="button" class="bwidth on" data-w="1"><span class="lprev" data-prev="w1"></span>1px</button>
+            <button type="button" class="bwidth" data-w="2"><span class="lprev" data-prev="w2"></span>2px</button>
+            <button type="button" class="bwidth" data-w="3"><span class="lprev" data-prev="w3"></span>3px</button>
+          </div>
+        </div>
+      </div>
+      <div class="frow"><label>적용 위치</label>
+        <div class="bgrp">
+          <button class="bplace" data-place="outer">⊞ 바깥</button>
+          <button class="bplace" data-place="inner">▦ 안쪽</button>
+          <button class="bplace" data-place="all">▩ 전체</button>
+          <button class="bplace" data-place="none">▢ 없음</button>
+        </div>
+      </div>
+      <div class="frow"><label></label>
+        <div class="bgrp">
+          <button class="bplace" data-place="top">▔ 위</button>
+          <button class="bplace" data-place="bottom">▁ 아래</button>
+          <button class="bplace" data-place="left">▏ 왼쪽</button>
+          <button class="bplace" data-place="right">▕ 오른쪽</button>
+        </div>
+      </div>
+      <div class="frow"><label>배경색</label>
+        <div class="cbgpal" id="cbg-pal"></div>
+      </div>
+      <div class="frow"><label></label>
+        <button class="t-btn" id="cbg-none" type="button" title="셀 배경 없음">없음</button>
+      </div>
+      <div class="dlg-hint">선 종류·굵기를 고르고 위치를 누르면 바로 적용됩니다. 이중선은 3px 고정. 배경색은 견본을 누르면 선택 셀에 바로 칠해집니다. (셀은 F5나 드래그로 선택)</div>
+    </div>
+    <div class="dlg-f"><button data-close>닫기</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-headfoot"><div class="dlg">
+    <div class="dlg-h">머리말 / 꼬리말 / 쪽 번호<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>머리말</label><input id="hf-header" type="text" placeholder="문서 위쪽 가운데"></div>
+      <div class="frow"><label></label><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="hf-oddeven" type="checkbox"> 홀수/짝수 쪽 다르게</label></div>
+      <div class="frow hf-oe hidden"><label>홀수쪽 머리말</label><input id="hf-header-odd" type="text" placeholder="1, 3, 5… 쪽"></div>
+      <div class="frow hf-oe hidden"><label>짝수쪽 머리말</label><input id="hf-header-even" type="text" placeholder="2, 4, 6… 쪽"></div>
+      <div class="frow"><label>꼬리말</label><input id="hf-footer" type="text" placeholder="쪽 번호 없을 때만"></div>
+      <div class="frow"><label>쪽 번호</label>
+        <select id="hf-pagenum"><option value="">없음</option><option value="center">아래 가운데</option><option value="right">아래 오른쪽</option><option value="left">아래 왼쪽</option></select></div>
+      <div class="frow"><label>번호 형식</label>
+        <select id="hf-pnformat"><option value="1">1, 2, 3</option><option value="circ">①, ②, ③</option><option value="roman">i, ii, iii</option><option value="hangul">가, 나, 다</option></select></div>
+      <div class="frow"><label>시작 번호</label><input id="hf-pnstart" type="number" min="1" step="1" value="1" style="width:80px"></div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="headFootApply">설정</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-stats"><div class="dlg">
+    <div class="dlg-h">글자 수 / 문서 정보<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>글자 수(공백 포함)</label><span id="st-ch" class="meta"></span></div>
+      <div class="frow"><label>글자 수(공백 제외)</label><span id="st-chnos" class="meta"></span></div>
+      <div class="frow"><label>단어 수</label><span id="st-words" class="meta"></span></div>
+      <div class="frow"><label>문단 수</label><span id="st-paras" class="meta"></span></div>
+      <div class="frow"><label>표 / 그림</label><span id="st-obj" class="meta"></span></div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-close>닫기</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-quit"><div class="dlg">
+    <div class="dlg-h">끝내기<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><p style="margin:.2em 0">저장하지 않은 변경이 있습니다. 저장할까요?</p></div>
+    <div class="dlg-f"><button class="ok" id="quit-save">저장 후 끝</button><button id="quit-discard">저장 안 함</button><button id="quit-cancel">취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-toc"><div class="dlg">
+    <div class="dlg-h">목차 생성<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><p id="toc-info" style="font-size:13px;line-height:1.6;margin:0">1페이지 맨 앞에 목차를 생성합니다.</p></div>
+    <div class="dlg-f"><button class="ok" data-act="tocGenDo">생성</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-pdfmode"><div class="dlg">
+    <div class="dlg-h">PDF 열기 방식<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><p style="font-size:13px;line-height:1.6;margin:0">PDF를 어떻게 열까요?<br><b>그대로</b> — 쪽을 그림으로 렌더(원본 그대로, 편집 불가·표·서식 유지).<br><b>글자만</b> — 글자를 뽑아 문단으로(편집 가능, 원래 배치는 사라짐).</p></div>
+    <div class="dlg-f"><button class="ok" data-act="pdfModeImage">그대로</button><button data-act="pdfModeText">글자만</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-spell"><div class="dlg">
+    <div class="dlg-h">맞춤법 검사 (자주 틀리는 말)<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><div id="spell-list"></div></div>
+    <div class="dlg-f"><button class="ok" data-act="spellFixAll">모두 고치기</button><button data-close>닫기</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-symbol"><div class="dlg">
+    <div class="dlg-h">특수 문자<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><div id="symtabs"></div><div id="symgrid"></div></div>
+    <div class="dlg-f"><button class="ok" data-close>닫기</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-list"><div class="dlg">
+    <div class="dlg-h">목록 속성<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b">
+      <div class="frow"><label>스타일</label><select id="ls-type"></select></div>
+      <div class="frow" id="ls-startrow"><label>시작 번호</label><input id="ls-start" type="number" min="1" max="9999" value="1"></div>
+    </div>
+    <div class="dlg-f"><button class="ok" data-act="listApply">적용</button><button data-close>취소</button></div>
+  </div></div>
+
+  <div class="modal hidden" id="m-style"><div class="dlg">
+    <div class="dlg-h">스타일<button class="dlg-x" data-close>✕</button></div>
+    <div class="dlg-b"><div id="stylelist">
+      <button class="mi" data-block="P">바탕글</button>
+      <button class="mi" data-block="H1">제목 1</button>
+      <button class="mi" data-block="H2">제목 2</button>
+      <button class="mi" data-block="H3">제목 3</button>
+    </div></div>
+    <div class="dlg-f"><button class="ok" data-close>닫기</button></div>
+  </div></div>
+
+  <div id="ctxmenu" class="hidden">
+    <div id="ctx-tbl" class="hidden"><!-- 표 안에서 우클릭 시에만 표시(웹포팅 복원 2026-07-17: #9 주인 승인 표 ctx메뉴 — embed 분기가 미포함) -->
+      <button class="ctx" data-act="rowAbove">위에 줄 추가</button>
+      <button class="ctx" data-act="rowBelow">아래에 줄 추가</button>
+      <button class="ctx" data-act="colLeft">왼쪽에 칸 추가</button>
+      <button class="ctx" data-act="colRight">오른쪽에 칸 추가</button>
+      <button class="ctx sep" data-act="delRow">줄 지우기</button>
+      <button class="ctx" data-act="delCol">칸 지우기</button>
+      <button class="ctx sep" data-act="merge">셀 합치기</button>
+      <button class="ctx" data-act="split">셀 나누기</button>
+      <button class="ctx sep" data-act="border">셀 테두리 그리기…</button>
+      <button class="ctx" data-act="delTable">표 지우기</button>
+    </div>
+    <button class="ctx" data-act="cut">오려 두기</button>
+    <button class="ctx" data-act="copy">복사하기</button>
+    <button class="ctx" data-act="paste">붙이기</button>
+    <button class="ctx" data-act="selectall">모두 선택</button>
+    <button class="ctx sep" data-act="charDlg">글자 모양</button>
+    <button class="ctx" data-act="paraDlg">문단 모양</button>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+<script src="wp-core.js"></script>
+<script src="wp-format.js"></script>
+<script src="wp-table.js"></script>
+<script src="wp-find.js"></script>
+<script src="wp-io.js"></script>
+<script src="wp-input.js"></script>
+<script src="wp-obj.js"></script>
+<script src="wp-ruler.js"></script>
+<script src="wp-page.js"></script>
+<script src="wp-preview.js"></script>
+<script src="wp-fullview.js"></script>
+<script src="wp-print.js"></script>
+<script src="wp-board.js"></script>
+<script src="wp-embed.js"></script>
+</body>
+</html>

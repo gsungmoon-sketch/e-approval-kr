@@ -36,16 +36,19 @@ def _edit_page(h, app, user, code, d, ok, err="", new=False, status=200):
             + "</div><div>" + _sel("doc_type", list(pol.DOC_TYPES.items()), d.get("doc_type"), "결재 종류(결재규정 연결)")
             + "</div><div>" + _sel("retention", [(r, r) for r in fdm.RETENTIONS], d.get("retention", "5년"), "보존기간")
             + "</div></div>"
+            + _sel("layout", [("", "기본(설정 따름)"), ("corporate", "기업 결재 양식(결재란 위)"),
+                              ("gov", "공문서 기안문(두문·본문·결문)")], d.get("layout", ""), "출력 서식")
             + _txt("prefix", d.get("prefix", ""), "문서번호 접두어", "설정의 문서번호 형식에 {prefix} 가 있을 때 사용")
             + _txt("depts", ",".join(d.get("depts", [])), "사용 부서", "부서 코드, 쉼표 구분 · 비우면 전 부서")
             + _txt("cc_depts", ",".join(d.get("cc_depts", [])), "필수 참조 부서", "그 부서 부서장이 자동 참조 (예: 재정 → MGT)")
-            + _txt("amount", d.get("amount", ""), "금액 필드", "결재규정 전결 한도에 쓰임: 금액 필드 키 또는 표키.합계열 (예: items.amount)")
+            + _txt("amount", d.get("amount", ""), "금액 필드", "참고용 표지(예: items.amount) — 금액 한도 전결은 양식 문서에 적용되지 않음, 결재자가 금액 확인")
             + _txt("title_hint", d.get("title_hint", ""), "제목 안내")
             + f"<label for=fm-bh>본문 기본 내용</label><textarea id=fm-bh class=short name=body_hint>{esc(d.get('body_hint', ''))}</textarea>"
             + f"<label for=fm-f>항목(JSON) <span class=mut>종류: {esc(' '.join(fdm.FIELD_TYPES))} · 표 열 계산식 'qty*price' · "
               f"합계 sum</span></label><textarea id=fm-f name=fields style='min-height:320px;font-family:monospace'>"
               f"{esc(d['fields'] if isinstance(d.get('fields'), str) else json.dumps(d.get('fields', []), ensure_ascii=False, indent=1))}"
               f"</textarea><p class=row><button>{'만들기' if new else '새 버전으로 저장'}</button></p></form>"
+            + ("" if new else _dclass_form(h, app, user, code))
             + (f"<div class=card><h3>버전</h3><ul>{vers}</ul></div>" if vers else ""))
     r = ok(f"양식 {'새로 만들기' if new else '· ' + d.get('name', code)}", body)
     if status != 200:
@@ -53,9 +56,19 @@ def _edit_page(h, app, user, code, d, ok, err="", new=False, status=200):
     return r
 
 
+def _dclass_form(h, app, user, code):
+    """양식의 기본 부서 분류(버전과 무관 — 바로 적용, 기안자가 기안 때 바꿀 수 있음)."""
+    r = app.form_dclass(user, code)
+    return (f"<form method=post action='/admin/forms/{esc(code)}/dclass' class=card>{h.csrf()}<h3>기본 부서 분류</h3>"
+            f"<div class=row><input type=text name=dclass value='{esc(r['set'])}' maxlength=30 aria-label='기본 부서 분류' "
+            f"placeholder='비우면 자동: {esc(r['effective'])}'><button class=sec>저장</button></div>"
+            f"<p class=mut>지금 적용: <b>{esc(r['effective'])}</b> — 기안자 부서에 같은 이름의 분류가 있으면 그것, 없으면 일반. "
+            f"새 버전을 만들지 않습니다.</p></form>")
+
+
 def _from_post(f):
     d = {k: f.get(k, "") for k in ("name", "category", "doc_type", "retention", "prefix", "depts", "cc_depts", "amount",
-                                    "title_hint", "body_hint")}
+                                    "title_hint", "body_hint", "layout")}
     try:
         d["fields"] = json.loads(f.get("fields") or "[]")
     except ValueError as e:
@@ -93,10 +106,13 @@ def forms_admin(h, app, user, p, ok):
         d = {k: v for k, v in src.items() if k not in ("code", "version", "enabled", "builtin")}
         d["name"] = (d["name"] + " (사본)")[:40]
         return _edit_page(h, app, user, (src["code"] + "_2")[:24], d, ok, new=True)
-    m = re.fullmatch(r"/admin/forms/([a-z][a-z0-9_-]{1,23})(?:/(enable|disable))?", p)
+    m = re.fullmatch(r"/admin/forms/([a-z][a-z0-9_-]{1,23})(?:/(enable|disable|dclass))?", p)
     if not m:
         raise core.NotFound("페이지 없음")
     code, act = m.group(1), m.group(2)
+    if act == "dclass" and post:
+        app.form_dclass_set(user, code, f.get("dclass", ""))
+        return redirect(f"/admin/forms/{code}")
     if act and post:
         app.form_enable(user, code, act == "enable")
         return redirect("/admin/forms")
@@ -113,7 +129,7 @@ def forms_admin(h, app, user, p, ok):
 
 def _from_post_safe(f):
     d = {k: f.get(k, "") for k in ("name", "category", "doc_type", "retention", "prefix", "amount", "title_hint",
-                                    "body_hint")}
+                                    "body_hint", "layout")}
     d["depts"] = [x for x in re.split(r"[,\s]+", f.get("depts", "")) if x]
     d["cc_depts"] = [x for x in re.split(r"[,\s]+", f.get("cc_depts", "")) if x]
     d["fields"] = f.get("fields", "")

@@ -42,10 +42,20 @@ def os_tag() -> str:
     return {"win32": "win", "darwin": "macos"}.get(sys.platform, "linux")
 
 
+SRC = ROOT / "src" / "gyeoljae"
+# vendor/hanword 의 .py 가 쓰는 표준 모듈(PyInstaller 는 gyeoljae 쪽 import 만 분석하므로 명시)
+HANWORD_STDLIB = ["array", "base64", "bisect", "copy", "difflib", "hashlib", "html.parser", "http.server", "inspect",
+                  "json", "pyexpat", "secrets", "shutil", "struct", "tempfile", "xml.etree.ElementTree", "zipfile", "zlib"]
+
+
 def run_pyinstaller(work: Path, dist: Path) -> Path:
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--console",
            "--name", NAME, "--paths", str(ROOT / "src"), "--collect-submodules", "gyeoljae",
            "--exclude-module", "tkinter", "--exclude-module", "_tkinter",
+           # 패키지 안 데이터: 정적 파일 + 반입한 hanword 편집기(.py 는 import 대신 sys.path 로 읽힘 → 데이터로 복사)
+           "--add-data", f"{SRC / 'static'}{os.pathsep}gyeoljae/static",
+           "--add-data", f"{SRC / 'vendor' / 'hanword'}{os.pathsep}gyeoljae/vendor/hanword",
+           *[a for m in HANWORD_STDLIB for a in ("--hidden-import", m)],
            "--distpath", str(dist), "--workpath", str(work / "work"), "--specpath", str(work),
            str(PKG / "entry.py")]
     print("+", " ".join(cmd), flush=True)

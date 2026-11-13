@@ -105,6 +105,11 @@ def doc_view(h, app, user, m, err="", comment=""):
     c = h.csrf()
     bar = (f"<a href='/box/inbox' class=btn>← 목록</a> {chip(m['status'])} "
            f"<a href='/doc/{did}/print' class='btn noprint' target=_blank rel=noopener>🖨 인쇄</a>")
+    from . import hanword
+    if hanword.available():
+        bar += (f" <a href='/doc/{did}/export.hwpx' class='btn noprint' download>HWPX 내려받기</a>"
+                f" <a href='/doc/{did}/export.docx' class='btn noprint' download>DOCX 내려받기</a>")
+    bar += f" <a href='/doc/{did}/redraft' class='btn noprint'>이 문서로 기안</a>"
     act = ""
     if m["can"]["approve"]:
         proxy = f" <span class=mut>(대결: {esc(m['cur_user'])} 대신)</span>" if m["can"]["proxy"] else ""
@@ -127,22 +132,45 @@ def doc_view(h, app, user, m, err="", comment=""):
         left = len(app.list_box(user, "inbox"))
         nxt = f" · <a href='/box/inbox'>다음 문서({left}건 남음)</a>" if left else ""
         done = f"<p class='banner ok' role=status>{'결재했습니다' if q == 'approve' else '반려했습니다'}{nxt}</p>"
-    from .web_home import folder_picker
+    from .paper import render_paper
+    from .web_filing import tags_panel
     fv = ""
     if m.get("form"):
-        fv = fields_view(app.form_for_doc(user, m["id"]), m.get("fields"))
+        _fd = app.form_for_doc(user, m["id"])
+        fv = fields_view(_fd, m.get("fields"))
         fv = f"<div class='card formview'>{fv}</div>" if fv else ""
+        miss = [f["label"] for f in _fd["fields"] if f["type"] == "file" and f["required"]
+                and len(m["attachments"]) < f.get("min_files", 1)]
+        if miss:  # 막지 않고 알림만(결재자가 확인)
+            fv = f"<p class='banner warn' role=note>⚠ 증빙 첨부 없음: {esc(', '.join(miss))} — 결재자가 확인하세요</p>" + fv
+    if m.get("doc_html"):  # 편집기 문서: 서식 칸까지 HTML 그대로(출력 때 다시 정화)
+        from .sanitize import clean_html
+        h._csp = "doc"
+        fv, bd = "", f"<div class='card dochtml'>{clean_html(m['doc_html'])}</div><div class=card>"
+    else:
+        bd = f"<div class=card><pre class=body>{esc(m['body'])}</pre>"
     main = (f"{done}<div class=bar>{bar}</div><h2 class=title>{esc(m['title'])}</h2>"
             f"<div class=docgrid><div>{doc_head(m)}</div><div class=stampwrap>{stamp_table(m, user)}</div></div>"
-            f"{fv}<p class=mut>참조: {cc}</p><div class=card><pre class=body>{esc(m['body'])}</pre>"
+            f"{fv}<p class=mut>참조: {cc}{source_line(m)}</p>{bd}"
             f"{'<ul class=atts>' + atts + '</ul>' if atts else ''}</div>{act}"
-            f"<div class=card><h3>의견·이력</h3><ul class=items>{hist}</ul></div>")
+            f"<div class=card><h3>의견·이력</h3><ul class=items>{hist}</ul></div>"
+            f"<details class='card paperprev noprint'><summary>출력 미리보기 (A4)</summary>"
+            f"<div class='paperwrap paper'>{render_paper(app, user, m)}</div></details>")
     aside = (f"<section class=card><h3>결재선</h3><ol class=lineol>" + "".join(
         f"<li>{esc(s['name'])} <span class=mut>{esc(STAMP.get(s['status'], s['status']))}"
         f"{' · 전결권' if s['final'] else ''}</span></li>" for s in m["line"]) + "</ol></section>"
-        + folder_picker(h, app, user, did))
+        + tags_panel(h, app, user, did))
     h._aside = aside
     return h.ok(m["title"], main)
+
+
+def source_line(m):
+    """'이 문서로 기안'한 문서: 원문 번호(볼 수 있으면 링크)."""
+    s = m.get("source")
+    if not s:
+        return ""
+    num = esc(s["number"])
+    return f" · 원문: <a href='/doc/{int(s['id'])}'>{num}</a>" if s["can_view"] else f" · 원문: {num}"
 
 
 def confirm_page(h, m, act, comment, jeon):
@@ -171,6 +199,7 @@ def _amt(a):
 
 
 def draft_form(h, app, user, action, m=None, err=""):
+    from .web_filing import draft_section
     m = m or {}
     fd = None
     if m.get("form"):
@@ -182,17 +211,22 @@ def draft_form(h, app, user, action, m=None, err=""):
     amt = m.get("amount")
     types = "".join(f"<label class=pick><input type=radio name=doc_type value='{k}' {'checked' if t == k else ''}> {v}</label>"
                     for k, v in pol.DOC_TYPES.items())
-    atts = "".join(f"<label class=mut><input type=checkbox name=remove value='{a['idx']}'> 삭제: {esc(a['name'])}</label>"
+    atts = "".join(f"<li>📎 {esc(a['name'])} <span class=mut>({_size(a.get('size'))})</span> "
+                   f"<label class='mut inline'><input type=checkbox name=remove value='{a['idx']}'> 삭제</label></li>"
                    for a in m.get("attachments", []))
+    atts = f"<p class=mut>붙어 있는 파일</p><ul class=atts>{atts}</ul>" if atts else ""
     saved = f"마지막 저장 {esc((m.get('updated') or m.get('created') or '')[11:16])}" if m.get("id") else "저장 전"
+    pre_f = mid_f = post_f = ""
     if fd:
+        from .paper import input_order, layout_for
+        before, mid, after = input_order(fd, layout_for(app, fd))
+        pre_f, mid_f, post_f = (fields_html(fd, m.get("fields"), ks) for ks in (before, mid, after))
         sec1 = (f"<fieldset class=card><legend>① 양식</legend><b>{esc(fd['name'])}</b> <span class=mut>{esc(fd['category'])} · "
                 f"{esc(pol.DOC_TYPES[fd['doc_type']])} · 보존 {esc(fd['retention'])} · v{fd['version']}</span>"
                 f"<input type=hidden name=form value='{esc(fd['code'])}'>")
         if not m.get("id"):
             sec1 += " <a href='/new' class=btn>양식 바꾸기</a>"
-        if not fd.get("amount"):
-            sec1 += "<label for=amt>금액 <span class=mut>(선택, 예: 150만)</span></label>" + f"<input type=text id=amt name=amount inputmode=numeric value='{esc('' if amt is None else amt)}'>"
+        # 양식 문서는 금액을 꺼내지 않음(양식 칸에 기안자가 적고 결재자가 확인) — 금액 한도 전결 없음
         sec1 += "</fieldset>"
     else:
         sec1 = (f"<fieldset class=card><legend>① 양식</legend>{types}"
@@ -204,16 +238,23 @@ def draft_form(h, app, user, action, m=None, err=""):
             f"(오른쪽 미리보기), 여기에는 <b>추가 결재자</b>만 적습니다. 규정이 없으면 결재자 아이디를 순서대로(전결권자는 끝에 !).</p>"
             f"<label for=ln>결재자</label><input type=text id=ln name=line list=users value='{esc(line)}' autocomplete=off>"
             f"<label for=cc>참조</label><input type=text id=cc name=cc list=users value='{esc(','.join(cc_in))}' autocomplete=off>"
-            f"</fieldset><fieldset class=card><legend>③ {'서식·' if fd else ''}본문</legend><label for=ti>제목</label>"
+            f"</fieldset><fieldset class=card><legend>③ {'서식·' if fd else ''}본문</legend><div class=edfb>{pre_f}</div>"
+            f"<label for=ti>제목</label>"
             f"<input type=text id=ti name=title maxlength={core.MAX_TITLE} required value='{esc(m.get('title'))}'"
             f"{' placeholder=' + chr(39) + esc(fd['title_hint']) + chr(39) if fd and fd.get('title_hint') else ''}>"
-            f"{fields_html(fd, m.get('fields')) if fd else ''}"
+            f"<div class=edfb>{mid_f if fd else ''}"
             f"<label for=bd>본문</label><textarea id=bd name=body>"
-            f"{esc(m.get('body') if m.get('body') is not None or not fd else fd.get('body_hint', ''))}</textarea></fieldset>"
-            f"<fieldset class=card><legend>④ 첨부</legend><input type=file name=files multiple aria-label='첨부 파일'>"
-            f"<p class=mut>hwpx/docx/pdf 등, 개당 10MB·합계 30MB</p>{atts}"
+            f"{esc(m.get('body') if m.get('body') is not None or not fd else fd.get('body_hint', ''))}</textarea>{post_f}</div>"
+            f"{editor_host(h, fd, m)}</fieldset>"
+            # 첨부 칸은 편집기와 같은 <form> 안 — 편집기 경로(doc_html)로 저장·상신해도 파일이 함께 올라감
+            f"<fieldset class=card><legend>④ 붙임 (첨부 파일)</legend>"
+            f"<p class=mut>올린 파일은 문서의 <b>붙임</b> 줄에 \"1. 파일명 1부.\"처럼 찍힙니다.</p>"
+            f"<input type=file name=files multiple aria-label='첨부 파일'>"
+            f"<p class=mut>개당 {core.MAX_FILE_BYTES // 1048576}MB · 합계 {core.MAX_TOTAL_BYTES // 1048576}MB · "
+            f"최대 {core.MAX_FILES}개, 문서·이미지·압축(hwpx/hwp/docx/xlsx/pptx/pdf/txt/csv/png/jpg/gif/zip 등)</p>{atts}"
             f"<label><input type=checkbox name=dept_open value=1 {'checked' if m.get('visibility') == 'dept' else ''}>"
             f" 완료 후 부서원 열람 허용</label></fieldset>"
+            f"{draft_section(h, app, user, m)}"
             f"<div class=savebar><button name=go value=save class=sec>임시저장</button> <span class=mut>{saved} · "
             f"저장하지 않은 내용은 다른 메뉴로 가면 사라집니다</span><span class=sp></span>"
             f"<span class=mut>상신하면 내용을 고칠 수 없고 회수만 가능합니다</span> <button name=go value=submit>상신</button></div>"
@@ -238,6 +279,31 @@ def draft_form(h, app, user, action, m=None, err=""):
 
 
 # ------------------------------------------------------------------ 양식(서식)
+def editor_host(h, fd, m):
+    """문서 편집기(iframe) 자리. 스크립트가 돌면 editor-host.js 가 위 입력칸(.edfb)을 숨기고 편집기를 띄운다.
+    스크립트가 없으면(휴대폰·시험) 입력칸이 그대로 동작. docinit 은 name 이 없어 그냥은 제출되지 않음."""
+    import json
+    from . import hanword
+    from .doctemplate import initial_html
+    if not hanword.available():
+        return ""
+    h._csp = "host"
+    try:
+        init = hanword.canonical_html(m["doc_html"]) if m.get("doc_html") is not None else \
+            initial_html(fd, m.get("fields"), m.get("body") if m.get("id") else None)
+    except ValueError:
+        init = ""
+    try:  # 저장된 용지(편집기가 돌려준 값) → 없으면 공문서 A4(위30·왼20·오15·아래15)
+        page = hanword.parse_page(m.get("doc_page")) or hanword.GOV
+    except ValueError:
+        page = hanword.GOV
+    return (f"<div id=edhost class=edhost hidden data-page='{esc(json.dumps(page))}'>"
+            f"<p id=ederr class='banner warn' role=alert hidden></p>"
+            f"<iframe id=edframe title='문서 편집기'></iframe></div>"
+            f"<textarea id=docinit hidden aria-hidden=true>{esc(init)}</textarea>"
+            f"<script src='/static/editor-host.js?v=3' defer></script>")
+
+
 def form_chooser(h, app, user):
     """① 양식 선택: 즐겨찾기·최근·분류별."""
     from . import formdef as fdm
@@ -267,6 +333,12 @@ def form_chooser(h, app, user):
     return h.ok("기안 · 양식 선택", f"<h2>새 기안 · ① 양식 선택</h2>{out}")
 
 
+def _size(n):
+    if not isinstance(n, int):
+        return "-"
+    return f"{n} B" if n < 1024 else (f"{n / 1024:.1f} KB" if n < 1048576 else f"{n / 1048576:.1f} MB")
+
+
 def _calc(x):
     return f"{x:,}" if isinstance(x, (int, float)) else ""
 
@@ -275,11 +347,12 @@ def _v(x):
     return "" if x is None else esc(x)
 
 
-def fields_html(fd, vals):
-    """양식 필드 입력 칸(이름 f.키…). 값은 정규화된 값 또는 직전 입력값."""
+def fields_html(fd, vals, keys=None):
+    """양식 필드 입력 칸(이름 f.키…). 값은 정규화된 값 또는 직전 입력값. keys = 이 순서로 이 필드만(종이 순서)."""
     vals = vals or {}
     out = []
-    for f in fd["fields"]:
+    by = {f["key"]: f for f in fd["fields"]}
+    for f in (fd["fields"] if keys is None else [by[k] for k in keys if k in by]):
         k, t, v = f["key"], f["type"], vals.get(f["key"])
         req = " <span class=req aria-label='필수'>*</span>" if f["required"] else ""
         hp = f" <span class=mut>{esc(f['help'])}</span>" if f.get("help") else ""
@@ -303,27 +376,20 @@ def fields_html(fd, vals):
                        f"aria-label='{esc(f['label'])} 시작'><input type=date name='f.{k}.to' value='{_v(v.get('to'))}' "
                        f"aria-label='{esc(f['label'])} 끝'></div>{days}")
         elif t == "file":
-            out.append(f"<p class=mut>📎 {esc(f['label'])}{req}: 아래 ④ 첨부에 {f['min_files']}개 이상 올려 주세요</p>")
+            out.append(f"<p class=mut>📎 {esc(f['label'])}{req}: 아래 ④ 붙임에 {f['min_files']}개 이상 올려 주세요</p>")
         elif t == "table":
             rows = v.get("rows") if isinstance(v, dict) else (v or [])
             n = max(f["rows"], len(rows) + 2)
-            head = "".join(f"<th scope=col>{esc(c['label'])}{' (자동)' if c.get('calc') else ''}</th>" for c in f["columns"])
+            head = "".join(f"<th scope=col>{esc(c['label'])}</th>" for c in f["columns"])
             body = ""
             for i in range(min(n, 50)):
                 r = rows[i] if i < len(rows) else {}
                 body += "<tr>" + "".join(
-                    f"<td class=amt>{_calc(r.get(c['key']))}</td>" if c.get("calc") else
                     f"<td><input type=text name='f.{k}.{i}.{c['key']}' value='{_v(r.get(c['key']))}' "
                     f"aria-label='{i + 1}행 {esc(c['label'])}'{' inputmode=numeric' if c['type'] != 'text' else ''}></td>"
                     for c in f["columns"]) + "</tr>"
-            sums = v.get("sum") if isinstance(v, dict) else None
-            foot = ""
-            if f.get("sum"):
-                foot = "<tr class=sum>" + "".join(
-                    f"<th>{(format(sums.get(c['key']), ',') if sums and sums.get(c['key']) is not None else '저장 시 계산') if c['key'] in f['sum'] else ('합계' if j == 0 else '')}</th>"
-                    for j, c in enumerate(f["columns"])) + "</tr>"
-            out.append(f"<p><b>{esc(f['label'])}</b>{req} <span class=mut>(빈 행은 무시, 금액·합계는 저장하면 자동 계산)"
-                       f"</span></p><div class=tablewrap><table class='form items'><tr>{head}</tr>{body}{foot}</table></div>")
+            out.append(f"<p><b>{esc(f['label'])}</b>{req} <span class=mut>(빈 행은 무시, 금액도 직접 적으세요)"
+                       f"</span></p><div class=tablewrap><table class='form items'><tr>{head}</tr>{body}</table></div>")
     return "".join(out)
 
 
@@ -341,13 +407,14 @@ def fields_view(fd, vals):
                 rows += f"<tr><th scope=row>{esc(f['label'])}</th><td>-</td></tr>"
                 continue
             cols = f["columns"]
-            fmt = lambda c, x: "" if x is None else (f"{x:,}" if c["type"] != "text" else esc(x))  # noqa: E731
+            fmt = lambda c, x: "" if x is None else (f"{x:,}" if c["type"] != "text" and isinstance(x, (int, float))
+                                                     else esc(x))  # noqa: E731
             tb = "".join("<tr>" + "".join(f"<td{' class=amt' if c['type'] != 'text' else ''}>{fmt(c, r.get(c['key']))}</td>"
                                           for c in cols) + "</tr>" for r in v["rows"])
             sm = ""
             if v.get("sum"):
                 sm = "<tr class=sum>" + "".join(
-                    f"<th class=amt>{v['sum'][c['key']]:,}</th>" if c["key"] in v["sum"] else
+                    f"<th class=amt>{_calc(v['sum'][c['key']]) or '미상'}</th>" if c["key"] in v["sum"] else
                     f"<th>{'합계' if j == 0 else ''}</th>" for j, c in enumerate(cols)) + "</tr>"
             tables += (f"<table class='form items'><caption>{esc(f['label'])}</caption><tr>"
                        + "".join(f"<th scope=col>{esc(c['label'])}</th>" for c in cols) + f"</tr>{tb}{sm}</table>")
@@ -360,21 +427,16 @@ def fields_view(fd, vals):
 
 
 def print_view(h, app, user, m):
-    """인쇄용 보기: 메뉴 없는 A4 한 장(브라우저 인쇄 Ctrl+P / ⌘P). 스크립트 없음."""
-    fv = ""
-    if m.get("form"):
-        fv = fields_view(app.form_for_doc(user, m["id"]), m.get("fields"))
-    atts = ", ".join(esc(a["name"]) for a in m["attachments"]) or "-"
-    cc = ", ".join(esc(x) for x in m["cc"]) or "-"
-    body = (f"<p class='noprint banner ok'>인쇄: Ctrl+P (Mac ⌘P) · Print with your browser. "
-            f"<a href='/doc/{m['id']}'>← 문서로</a></p>"
-            f"<h1 class=ptitle>{esc((m.get('form') or {}).get('name') or '기 안 문')}</h1>"
-            f"<div class=docgrid><div>{doc_head(m)}</div><div>{stamp_table(m, user)}</div></div>"
-            f"<h2 class=title>{esc(m['title'])}</h2>{fv}<pre class=body>{esc(m['body'])}</pre>"
-            f"<p class=mut>참조: {cc} · 첨부: {atts}</p>")
+    """인쇄용 보기: 메뉴 없는 A4 한 장(브라우저 인쇄 Ctrl+P / ⌘P). 스크립트 없음. 화면=회색 바탕 가운데 종이."""
+    from .paper import render_paper
+    sheet = render_paper(app, user, m)
+    if m.get("doc_html"):
+        h._csp = "doc"
+    body = (f"<p class='noprint pbar'><span>인쇄: Ctrl+P (Mac ⌘P) · 용지 A4</span>"
+            f"<a href='/doc/{int(m['id'])}'>← 문서로</a></p><div class=paper>{sheet}</div>")
     doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8><meta name=viewport "
            f"content='width=device-width,initial-scale=1'><title>{esc(m['title'])}</title>"
-           f"<link rel=stylesheet href='/s.css?v=6'></head><body class=print><main class=solo>{body}</main></body></html>")
+           f"<link rel=stylesheet href='/paper.css?v=3'></head><body class=paperpage><main>{body}</main></body></html>")
     return core_resp(doc)
 
 

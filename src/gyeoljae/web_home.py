@@ -34,11 +34,11 @@ def nav_items(app, me):
              ("/box/inbox", "결재", "box", b["inbox"], [
                  ("/box/inbox", "결재대기", b["inbox"]), ("/box/progress", "결재진행", 0), ("/box/done", "결재완료", 0),
                  ("/box/rejected", "반려", rej), ("/box/cc", "참조/열람", cc), ("/box/drafts", "기안함·임시저장", 0),
-                 ("/box/dept", "부서문서함", 0), ("/new", "✍ 기안하기", 0)]),
+                 ("/new", "✍ 기안하기", 0)]),
              ("/msg", "소통", "talk", b["messages"] + b.get("mail", 0), [
                  ("/msg", "쪽지", b["messages"]), ("/mail", "메일", b.get("mail", 0)), ("/board/notice", "게시판", 0),
                  ("/files", "자료실", 0)]),
-             ("/docs", "내 보관함", "docs", 0, []), ("/org", "조직도", "org", 0, []),
+             ("/docs", "문서함", "docs", 0, _docs_kids(app, me)), ("/org", "조직도", "org", 0, []),
              ("/settings", "설정", "settings", 0, [("/me", "비밀번호", 0), ("/delegate", "대결자 지정", 0),
                                                  ("/preview", "내 결재선 미리보기", 0)])]
     if me["role"] == "admin":
@@ -47,6 +47,22 @@ def nav_items(app, me):
                                                      ("/admin/changes", "변경요청·설정", 0), ("/admin/smtp", "외부 메일", 0),
                                                      ("/admin/audit", "감사로그", 0)]))
     return items, b
+
+
+def _docs_kids(app, me):
+    """문서함 구역: 부서 문서함(분류별) · 사업 문서함(진행 사업) · 내 폴더."""
+    u = me["username"]
+    kids = [("/docs/dept", "부서 문서함", 0)]
+    try:
+        kids += [(f"/docs/dept?c={r['id']}", "　" * (r["depth"] + 1) + "· " + esc(r["name"]), 0)
+                 for r in app.dclass_list(u)]
+    except core.GyeolError:
+        pass
+    kids.append(("/docs/project", "사업 문서함", 0))
+    kids += [(f"/docs/project/{p['id']}", "　· " + esc(p["name"]), 0) for p in app.project_list(u, status="open")]
+    kids.append(("/docs", "내 폴더", 0))
+    kids += [(f"/docs/folder/{f['id']}", "　· " + esc(f["name"]), 0) for f in app.folder_list(u)]
+    return kids
 
 
 def _badge(n):
@@ -169,20 +185,24 @@ def docs_page(h, app, user, p):
                        f"{esc(d.get('number') or '')}</span></td><td><form method=post action='/docs/folder/{fid}/remove' "
                        f"class=inline>{c}<input type=hidden name=doc value='{d['id']}'><button class=sec>빼기</button></form>"
                        f"</td></tr>" for d in r["docs"])
-        body = (f"<h2>내 보관함 · {esc(r['name'])}</h2><div class=card><table>{rows or '<tr><td class=mut>비어 있음 — 문서 화면에서 [보관함에 담기]</td></tr>'}"
+        body = (f"<h2>내 폴더 · {esc(r['name'])}</h2><div class=card><table>{rows or '<tr><td class=mut>비어 있음 — 문서 화면에서 [보관함에 담기]</td></tr>'}"
                 f"</table></div><form method=post action='/docs/folder/{fid}/rename' class=card>{c}<div class=row>"
                 f"<input type=text name=name value='{esc(r['name'])}' aria-label='폴더 이름'><button class=sec>이름 바꾸기</button>"
                 f"</div></form><form method=post action='/docs/folder/{fid}/delete' class=card>{c}"
                 f"<button class=warn>폴더 삭제</button> <span class=mut>문서 자체는 지워지지 않습니다</span></form>")
-        return h.ok("내 보관함", body)
+        return h.ok("내 폴더", body)
     if p != "/docs":
         raise core.NotFound("페이지 없음")
     rows = app.list_box(user, "dept")
     folders = app.folder_list(user)
     fl = "".join(f"<li><a href='/docs/folder/{x['id']}'>{esc(x['name'])}</a> <span class=mut>{x['count']}</span></li>"
                  for x in folders) or "<li class=mut>폴더가 없습니다</li>"
-    body = (f"<h2>문서함</h2><div class=card><h3>부서 문서함</h3><p class=mut>우리 부서의 완료 문서 중 부서 공개 문서"
-            f"(부서장급은 전체).</p>{h.table(rows)}</div><div class=card><h3>내 보관함</h3><ul class=items>{fl}</ul>"
+    pl = "".join(f"<li><a href='/docs/project/{x['id']}'>{esc(x['name'])}</a> <span class=mut>{esc(x['status_ko'])}</span></li>"
+                 for x in app.project_list(user)) or "<li class=mut>참여 중인 사업이 없습니다</li>"
+    body = (f"<h2>문서함</h2><div class=card><h3><a href='/docs/dept'>부서 문서함</a></h3><p class=mut>우리 부서의 완료 문서 중 "
+            f"부서 공개 문서(부서장급은 전체). <a href='/docs/dept'>분류별로 보기</a></p>{h.table(rows)}</div>"
+            f"<div class=card><h3><a href='/docs/project'>사업 문서함</a></h3><ul class=items>{pl}</ul></div>"
+            f"<div class=card><h3>내 폴더 <span class=mut>(나만 보임)</span></h3><ul class=items>{fl}</ul>"
             f"<form method=post action='/docs' class=row>{h.csrf()}<input type=text name=name placeholder='새 폴더 이름' "
             f"aria-label='새 폴더 이름' required><button class=sec>만들기</button></form></div>")
     return h.ok("문서함", body)
@@ -286,7 +306,8 @@ def route(h, app, user, p):
         fid = h.form.get("folder", "")
         return docs_page(h, app, user, f"/docs/folder/{int(fid) if fid.isdigit() else 0}/add")
     if p == "/docs" or p.startswith("/docs/"):
-        return docs_page(h, app, user, p)
+        from .web_filing import route as filing_route
+        return filing_route(h, app, user, p) or docs_page(h, app, user, p)
     if p == "/files" or p.startswith("/files/"):
         return files_page(h, app, user, p)
     if p == "/mail" or p.startswith("/mail/"):

@@ -39,7 +39,7 @@ e-approval-kr -u admin setting set emp_digits 3     # 3-digit serial in new numb
 <tr><td>Delegation rules</td><td>Whether delegation is allowed, same department only, minimum position of the delegate, maximum days.</td></tr></table>
 <ul><li>Rules are <b>versioned</b>. A change applies to new submissions; documents in progress keep the rule they were submitted under.</li>
 <li>Use <b>preview</b> to see "who approves for this department, type and amount" before applying.</li>
-<li>The amount comes automatically from the form's money field (table total).</li></ul>
+<li><b>Amount-limit final approval does not apply to form documents</b> — the server does not extract, calculate or check amounts in a form; the approvers check the amount. Final-approval rules without a limit and the full approval line still apply. (Only a free-form draft given an explicit <code>--amount</code> uses the limit.)</li></ul>
 <div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin policy edit DEV --type 지출 --line "팀장?, 부서장, 대표" --jeon "부서장:100만" --cc hr
 e-approval-kr -u admin policy deleg DEV --allowed yes --same-dept yes --max-days 14
 e-approval-kr -u admin policy preview --dept DEV --type 지출 --amount 150만
@@ -66,7 +66,7 @@ e-approval-kr -u admin policy clear DEV      # remove rules (free approval line)
 <tr><td><code>date</code></td><td>Date (날짜)</td><td></td></tr>
 <tr><td><code>daterange</code></td><td>Period (기간)</td><td><code>workdays:true</code> counts working days only; <code>half_field</code> makes a half day 0.5</td></tr>
 <tr><td><code>select</code></td><td>Choice (선택)</td><td><code>options</code> list (no duplicates, up to 30)</td></tr>
-<tr><td><code>table</code></td><td>Table with repeating rows (표)</td><td><code>columns</code> (up to 8; column types text, number, money), calculated column <code>"calc":"qty*price"</code>, totals <code>"sum":["amount"]</code></td></tr>
+<tr><td><code>table</code></td><td>Table with repeating rows (표)</td><td><code>columns</code> (up to 8; column types text, number, money), amount column marker <code>"calc":"qty*price"</code>, total cells <code>"sum":["amount"]</code> — both are filled in by the drafter; the server does not calculate them</td></tr>
 <tr><td><code>file</code></td><td>Attachment required (첨부 필수)</td><td><code>min_files</code> minimum number of files</td></tr></table>
 <p>A form can have up to 30 fields. A field key starts with a lowercase letter and is at most 24 characters. Common properties: <code>key</code>, <code>label</code>, <code>required</code>, <code>help</code>.</p>
 <h3>JSON example</h3>
@@ -97,6 +97,10 @@ e-approval-kr -u admin policy clear DEV      # remove rules (free approval line)
 e-approval-kr -u admin form copy general hr_memo --name "인사 품의"
 e-approval-kr -u admin form edit hr_memo definition.json    # new version
 e-approval-kr -u admin form add edu definition.json</code></pre></div>
+<h3>Default department classification</h3>
+<p>Under <b>기본 부서 분류</b> on a form's page, enter a classification name; drafts on that form then default to the drafter's department classification of that name (or 일반 if there is none). Leave it empty for the automatic default (expense/claims → 회계, leave/trips → 인사, purchase → 비품, others → 일반). This does not create a new form version.</p>
+<h3>Document manager (문서관리 담당)</h3>
+<p>Turning on <b>문서관리 담당 지정</b> on an employee's page lets that person change the classification and projects of their own department's documents (those they can view) after approval. Department heads and administrators edit the classification tree under <b>문서함 → 부서 문서함 → 분류 관리</b> (administrators can switch the department code).</p>
 <h2>7. Document number format</h2>
 <p>The number is issued at final approval, so there are no gaps. Default: <code>{dept}-{year}-{seq}</code> (e.g. DEV-2026-0001).
 Placeholders: <code>{dept}</code> department code, <code>{year}</code> four-digit year, <code>{yy}</code> two-digit year, <code>{prefix}</code> form prefix (department code if none), <code>{seq}</code> serial number.</p>

@@ -4,9 +4,12 @@
   {"name", "category"(일반/보고/재정/인사/대외), "doc_type"(general/expense/leave), "retention"(보존기간),
    "prefix"(문서번호 접두어, 선택), "depts"([] = 전 부서), "cc_depts"(필수 참조 부서 → 부서장),
    "amount"(금액 필드: "필드키" 또는 "표키.열키" 합계), "title_hint", "body_hint",
+   "template_html"(편집기 서식 HTML, 선택·512KB, data-field/data-row/data-sum 칸),
+   "layout"(출력 서식: "corporate" 결재란 위 / "gov" 공문서 기안문, 비우면 설정 paper_default),
    "fields": [{"key","label","type","required","options","max","columns","sum","workdays","min_files","help"}]}
 필드 종류: text textarea number money date daterange select table file
 표(table) 열: {"key","label","type"(text/number/money),"calc":"a*b"} · "sum": 합계낼 열 목록.
+  calc·sum 은 서식 표시용 표지일 뿐 — 금액·합계 칸도 기안자가 적고 서버는 계산·검증하지 않음(양식 문서 금액=None).
 값은 서버가 다시 계산한다(합계·곱·일수) — 클라이언트 값 불신.
 """
 from __future__ import annotations
@@ -24,6 +27,7 @@ FIELD_TYPES = {"text": "한 줄 글", "textarea": "여러 줄 글", "number": "�
                "daterange": "기간", "select": "선택", "table": "표(행 반복)", "file": "첨부 필수"}
 COL_TYPES = ("text", "number", "money")
 CATEGORIES = ("일반", "보고", "재정", "인사", "대외")
+LAYOUTS = ("", "corporate", "gov")
 RETENTIONS = ("1년", "3년", "5년", "10년", "준영구", "영구")
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,23}$")
 CODE_RE = re.compile(r"^[a-z][a-z0-9_-]{1,23}$")
@@ -84,6 +88,9 @@ def _check_def(d):
         if isinstance(v, str):
             v = [x for x in re.split(r"[,\s]+", v) if x]
         out[k] = sorted({str(x).strip().upper() for x in v if str(x).strip()})[:30]
+    out["layout"] = str(d.get("layout") or "").strip().lower()
+    if out["layout"] not in LAYOUTS:
+        raise Invalid("출력 서식(layout)은 corporate 또는 gov (비우면 기본 설정)")
     out["title_hint"] = _one(d.get("title_hint"), 100)
     out["body_hint"] = _clean(d.get("body_hint"), 2000)
     fields = d.get("fields") or []
@@ -148,6 +155,12 @@ def _check_def(d):
         if not ok:
             raise Invalid("금액 필드는 금액(money) 필드 키 또는 '표키.합계열' 이어야 합니다")
     out["amount"] = amt
+    if d.get("template_html"):  # 편집기 서식(선택) — 없으면 doctemplate.default_template
+        from .doctemplate import check_template
+        try:
+            out["template_html"] = check_template(d["template_html"])
+        except ValueError as e:
+            raise Invalid(str(e))
     if out["doc_type"] == "expense" and not amt:
         raise Invalid("지출 양식은 금액 필드(amount)를 지정해야 합니다")
     return out
@@ -199,8 +212,22 @@ def _days(a, b, workdays):
     return n
 
 
+def _soft(fn, v, *a):
+    """형식이 틀려도 막지 않음(결재자가 확인) — 읽을 수 없으면 입력 그대로(한 줄 글) 보관."""
+    try:
+        return fn(v, *a)
+    except Invalid:
+        return _one(v, 100) or None
+
+
+def _isnum(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
 def normalize(fd, values, n_files=0, strict=False):
-    """값 검증·계산. 반환 (정규화된 값 dict, 금액 또는 None). strict=True 면 필수 항목까지 검사(상신)."""
+    """값 정리·계산. 반환 (정리된 값 dict, 금액 또는 None).
+    금액·기간·필수 항목은 막지 않는다(사용자 결정: 결재자가 확인). 읽을 수 있는 숫자·날짜만 계산에 쓰고,
+    읽을 수 없는 값은 입력 그대로 보관. 금액은 항상 None(꺼내 확인하지 않음) → 양식 문서는 금액 한도 전결 없음."""
     values = values if isinstance(values, dict) else {}
     out = {}
     for f in fd["fields"]:
@@ -209,38 +236,34 @@ def normalize(fd, values, n_files=0, strict=False):
             x = _clean(v, f["max"]) if t == "textarea" else _one(v, f["max"])
             out[k] = x or None
         elif t in ("number", "money"):
-            out[k] = _num(v, t == "money", lab)
+            out[k] = _soft(_num, v, t == "money", lab)
         elif t == "date":
-            out[k] = _date(v, lab)
+            out[k] = _soft(_date, v, lab)
         elif t == "select":
-            x = _one(v, 40)
-            if x and x not in f["options"]:
-                raise Invalid(f"{lab}: 선택지에 없는 값")
-            out[k] = x or None
+            out[k] = _one(v, 40) or None  # 선택지 밖 값도 보관(결재자 확인)
         elif t == "daterange":
             if isinstance(v, str):
                 a, _, b = v.partition("~")
                 v = {"from": a, "to": b}
             v = v if isinstance(v, dict) else {}
-            a, b = _date(v.get("from"), lab), _date(v.get("to"), lab)
+            a, b = _soft(_date, v.get("from"), lab), _soft(_date, v.get("to"), lab)
             if a and not b:
                 b = a
-            if b and not a:
-                raise Invalid(f"{lab}: 시작일이 필요합니다")
-            if a:
-                if b < a:
-                    raise Invalid(f"{lab}: 종료일이 시작일보다 앞섭니다")
-                n = _days(a, b, f.get("workdays"))
-                hf = f.get("half_field")
-                if hf and a == b and "반차" in str(values.get(hf) or ""):
-                    n = 0.5
-                out[k] = {"from": a, "to": b, "days": n}
+            if a or b:
+                n = None
+                try:
+                    if a and b and b >= a:
+                        n = _days(a, b, f.get("workdays"))
+                        hf = f.get("half_field")
+                        if hf and a == b and "반차" in str(values.get(hf) or ""):
+                            n = 0.5
+                except (Invalid, ValueError):
+                    n = None  # 날짜를 못 읽거나 너무 김 → 일수 없음
+                out[k] = {"from": a or "", "to": b or "", "days": n}
             else:
                 out[k] = None
         elif t == "file":
-            out[k] = None
-            if strict and f["required"] and n_files < f["min_files"]:
-                raise Invalid(f"{lab}: 첨부 파일 {f['min_files']}개 이상 필요")
+            out[k] = None  # 첨부 없으면 문서에 경고만(막지 않음)
             continue
         elif t == "table":
             rows = v.get("rows") if isinstance(v, dict) else v
@@ -252,45 +275,24 @@ def normalize(fd, values, n_files=0, strict=False):
                 r = r if isinstance(r, dict) else {}
                 row = {}
                 for col in f["columns"]:
-                    if col.get("calc"):  # 계산 열은 클라이언트 값을 절대 읽지 않음
-                        row[col["key"]] = None
-                        continue
-                    cv = r.get(col["key"])
+                    cv = r.get(col["key"])  # 계산 열(금액)도 기안자가 적은 값 그대로
                     row[col["key"]] = (_one(cv, 100) or None) if col["type"] == "text" else \
-                        _num(cv, col["type"] == "money", f"{lab} {i}행 {col['label']}")
-                if all(row[c["key"]] in (None, "") for c in f["columns"] if not c.get("calc")):
+                        _soft(_num, cv, col["type"] == "money", f"{lab} {i}행 {col['label']}")
+                if all(row[c["key"]] in (None, "") for c in f["columns"]):
                     continue  # 빈 행 버림
-                for col in f["columns"]:
-                    if col.get("calc"):
-                        a, b = col["calc"].split("*")
-                        if row[a] is None or row[b] is None:  # 계산 재료가 빠지면 거부(금액 0으로 한도 회피 방지)
-                            labs = {c["key"]: c["label"] for c in f["columns"]}
-                            raise Invalid(f"{lab} {i}행: {labs[a]}·{labs[b]}를 모두 입력하세요")
-                        x = row[a] * row[b]
-                        row[col["key"]] = int(round(x)) if col["type"] == "money" else \
-                            (int(x) if x == int(x) else round(x, 2))
-                        if abs(row[col["key"]]) > pol.MAX_AMOUNT:
-                            raise Invalid(f"{lab} {i}행: 금액 범위 오류")
                 nr.append(row)
-            sums = {s: sum((r[s] or 0) for r in nr) for s in f.get("sum", [])}
-            for s, x in sums.items():
-                x = round(x, 2) if isinstance(x, float) else x
-                sums[s] = x
-                if isinstance(x, float) and x == int(x):
-                    sums[s] = int(x)
-            out[k] = {"rows": nr, "sum": sums} if nr else None
-        if strict and f["required"] and out.get(k) in (None, "", {}):
-            raise Invalid(f"{lab}: 필수 항목입니다")
-    amount = None
-    if fd.get("amount"):
-        a, _, b = fd["amount"].partition(".")
-        x = out.get(a)
-        amount = (x["sum"].get(b) if x else None) if b else x
-        if amount is not None and not (0 <= amount <= pol.MAX_AMOUNT):
-            raise Invalid("금액 범위 오류")
-        if strict and amount is None:
-            raise Invalid("금액을 입력하세요")
-        amount = None if amount is None else int(amount)
+            sums = {}  # 합계도 기안자가 적은 그대로(서버 계산·검증 안 함)
+            sv = v.get("sum") if isinstance(v, dict) else None
+            for s_ in f.get("sum", []):
+                x = sv.get(s_) if isinstance(sv, dict) else None
+                if x not in (None, ""):
+                    sc = next(c for c in f["columns"] if c["key"] == s_)
+                    x = _soft(_num, x, sc["type"] == "money", f"{lab} 합계")
+                    if x not in (None, ""):
+                        sums[s_] = x
+            out[k] = {"rows": nr, "sum": sums} if (nr or sums) else None
+        # 필수 항목 비어 있어도 막지 않음(결재자 확인)
+    amount = None  # 금액을 꺼내 확인하지 않음(사용자 결정: 결재자가 확인) → 금액 한도 전결 없음
     return out, amount
 
 
@@ -304,7 +306,7 @@ def from_flat(fd, get):
         elif f["type"] == "table":
             rows = []
             for i in range(MAX_ROWS):  # 중간에 빈 행이 있어도 끝까지 읽음
-                r = {c["key"]: get(f"f.{k}.{i}.{c['key']}") for c in f["columns"] if not c.get("calc")}
+                r = {c["key"]: get(f"f.{k}.{i}.{c['key']}") for c in f["columns"]}
                 if all(x in (None, "") for x in r.values()):
                     continue
                 rows.append(r)
@@ -319,12 +321,12 @@ def display(f, v):
     if v in (None, ""):
         return "-"
     if f["type"] == "money":
-        return f"{v:,}원"
+        return f"{v:,}원" if _isnum(v) else str(v)
     if f["type"] == "number":
-        return f"{v:,}"
+        return f"{v:,}" if _isnum(v) else str(v)
     if f["type"] == "daterange":
-        d = v["days"]
-        return f"{v['from']} ~ {v['to']} ({d:g}일)"
+        d = v.get("days")
+        return f"{v.get('from')} ~ {v.get('to')}" + (f" ({d:g}일)" if _isnum(d) else "")
     return str(v)
 
 
@@ -392,7 +394,7 @@ BUILTIN = [
               "fields": [_t("to_dept", "수신 부서", True), _t("subject", "협조 사항", True),
                          {"key": "due", "label": "회신 기한", "type": "date"}]}),
     ("official", {"name": "공문(대외 발신)", "category": "대외", "doc_type": "general", "retention": "10년",
-                  "prefix": "공문", "title_hint": "○○ 관련 협조 요청",
+                  "prefix": "공문", "layout": "gov", "title_hint": "○○ 관련 협조 요청",
                   "body_hint": "1. 귀 기관의 무궁한 발전을 기원합니다.\n2. \n\n붙임  1부.  끝.",
                   "fields": [_t("recv", "수신", True), _t("via", "참조(경유)"), _t("sender", "발신명의", True,
                                                                                    help="예: 주식회사 ○○ 대표이사"),

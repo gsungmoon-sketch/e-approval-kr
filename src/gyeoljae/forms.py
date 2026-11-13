@@ -39,6 +39,7 @@ class FormsMixin:
         cols = {r["name"] for r in c.execute("pragma table_info(docs)")}
         if "form" not in cols:
             c.execute("alter table docs add column form text")
+        self._upgrade_builtin_forms(c)
         if not c.execute("select count(*) from forms").fetchone()[0]:
             ts = now_iso()
             for i, (code, d) in enumerate(fdm.builtin_defs()):
@@ -46,6 +47,25 @@ class FormsMixin:
                           (code, (i + 1) * 10, ts))
                 c.execute("insert into form_versions(code,version,def,created,actor) values(?,1,?,?,'system')",
                           (code, json.dumps(d, ensure_ascii=False), ts))
+
+    def _upgrade_builtin_forms(self, c):
+        """기본 양식이 관리자 손을 안 탄 채(내용이 옛 기본값과 같음) 남아 있으면 새 기본값을 새 버전으로 올림."""
+        new = dict(fdm.builtin_defs())
+        for r in c.execute("select code, version from forms where builtin=1").fetchall():
+            if r["code"] not in new:
+                continue
+            cur = json.loads(c.execute("select def from form_versions where code=? and version=?",
+                                       (r["code"], r["version"])).fetchone()["def"])
+            want = new[r["code"]]
+            if cur == want:
+                continue
+            if {k: v for k, v in want.items() if k != "layout"} != {k: v for k, v in cur.items() if k != "layout"}:
+                continue  # 관리자가 고친 양식은 건드리지 않음
+            ver = r["version"] + 1
+            ts = now_iso()
+            c.execute("update forms set version=?, updated=? where code=?", (ver, ts, r["code"]))
+            c.execute("insert into form_versions(code,version,def,created,actor) values(?,?,?,?,'system')",
+                      (r["code"], ver, json.dumps(want, ensure_ascii=False), ts))
 
     # ------------------------------------------------------------ 조회
     def _form_def(self, c, code, version=None):
@@ -182,8 +202,6 @@ class FormsMixin:
         meta["doc_type"] = d["doc_type"]
         if d.get("amount"):
             meta["amount"] = amt
-        if strict and d["doc_type"] == "expense" and meta.get("amount") is None:
-            raise Invalid("지출 문서는 금액이 필요합니다")
         return d
 
     def _require_form(self, c, meta_form):

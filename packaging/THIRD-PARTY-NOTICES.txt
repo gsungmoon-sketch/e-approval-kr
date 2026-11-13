@@ -3,7 +3,8 @@ e-approval-kr - third-party notices
 
 e-approval-kr itself is released under the MIT License (see LICENSE.txt).
 The self-contained packages (Windows installer, macOS .pkg, Linux tarball) additionally
-bundle the following components. The .pyz package contains only e-approval-kr code.
+bundle the following components. The .pyz package contains only e-approval-kr code and the vendored
+hanword editor (last entry).
 
 * Python runtime and standard library
   Python Software Foundation License Version 2 - https://docs.python.org/3/license.html
@@ -25,3 +26,9 @@ bundle the following components. The .pyz package contains only e-approval-kr co
   Copyright (c) 2008-2020 Kohsuke Kawaguchi, Sun Microsystems, Inc., CloudBees, Inc.,
   Oleg Nenashev and other contributors. Full text: WinSW-LICENSE.txt in the install folder.
   https://github.com/winsw/winsw
+
+* All packages (including .pyz and the Python wheel): hanword document editor (embed build),
+  vendored in gyeoljae/vendor/hanword/ - MIT License (vendor/hanword/LICENSE). It bundles
+  html2canvas and jsPDF (MIT), an HWPX skeleton from python-hwpx (Apache-2.0,
+  NOTICE-hwpx_skeleton.txt) and Korean web fonts (SIL OFL 1.1 / Apache-2.0); licence texts are in
+  vendor/hanword/licenses/. Source commit and file hashes: vendor/hanword/VENDOR.md.

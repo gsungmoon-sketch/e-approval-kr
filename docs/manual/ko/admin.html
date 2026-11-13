@@ -39,7 +39,7 @@ e-approval-kr -u admin setting set emp_digits 3     # 자동 사번 일련번호
 <tr><td>대결 규칙</td><td>대결 허용 여부, 같은 부서만 허용, 대결자의 최소 직위, 최대 기간(일).</td></tr></table>
 <ul><li>규정은 <b>버전 관리</b>됩니다. 바꾸면 새 상신부터 적용되고, 진행 중 문서는 상신 당시 규정을 유지합니다.</li>
 <li><b>미리보기</b>로 "이 부서·종류·금액이면 누가 결재하나"를 확인한 뒤 적용하세요.</li>
-<li>금액은 양식의 금액 항목(표 합계)에서 자동으로 넘어옵니다.</li></ul>
+<li><b>금액 한도 전결은 양식 문서에 적용되지 않습니다</b> — 서버는 양식의 금액을 꺼내 계산·확인하지 않으며, 결재자가 금액을 확인합니다. 한도 없는 전결 규칙과 전체 결재선은 그대로 적용됩니다. (자유 형식 기안에 <code>--amount</code>를 직접 준 경우만 한도 전결이 적용됩니다.)</li></ul>
 <div class="adm"><b>관리자용</b><pre><code>e-approval-kr -u admin policy edit DEV --type 지출 --line "팀장?, 부서장, 대표" --jeon "부서장:100만" --cc hr
 e-approval-kr -u admin policy deleg DEV --allowed yes --same-dept yes --max-days 14
 e-approval-kr -u admin policy preview --dept DEV --type 지출 --amount 150만
@@ -65,7 +65,7 @@ e-approval-kr -u admin policy clear DEV      # 규정 해제(자유 결재선)</
 <tr><td><code>date</code></td><td>날짜</td><td></td></tr>
 <tr><td><code>daterange</code></td><td>기간</td><td><code>workdays:true</code>면 주말 제외 일수, <code>half_field</code>로 반차 0.5일 처리</td></tr>
 <tr><td><code>select</code></td><td>선택</td><td><code>options</code> 목록(중복 없이, 최대 30개)</td></tr>
-<tr><td><code>table</code></td><td>표(행 반복)</td><td><code>columns</code>(최대 8열, 열 종류는 text·number·money), 계산 열 <code>"calc":"qty*price"</code>, 합계 열 <code>"sum":["amount"]</code></td></tr>
+<tr><td><code>table</code></td><td>표(행 반복)</td><td><code>columns</code>(최대 8열, 열 종류는 text·number·money), 금액 열 표지 <code>"calc":"qty*price"</code>, 합계 칸 <code>"sum":["amount"]</code> — 둘 다 기안자가 직접 적는 칸이며 서버는 계산하지 않습니다</td></tr>
 <tr><td><code>file</code></td><td>첨부 필수</td><td><code>min_files</code> 최소 파일 수</td></tr></table>
 <p>필드는 최대 30개, 필드 키는 영소문자로 시작하는 24자 이내입니다. 공통 속성: <code>key</code>, <code>label</code>, <code>required</code>, <code>help</code>.</p>
 <h3>JSON 예시</h3>
@@ -96,6 +96,10 @@ e-approval-kr -u admin policy clear DEV      # 규정 해제(자유 결재선)</
 e-approval-kr -u admin form copy general hr_memo --name "인사 품의"
 e-approval-kr -u admin form edit hr_memo 정의.json    # 새 버전
 e-approval-kr -u admin form add edu 정의.json</code></pre></div>
+<h3>기본 부서 분류</h3>
+<p>양식 화면 아래 <b>기본 부서 분류</b>에 분류 이름을 적으면, 그 양식으로 기안할 때 기안자 부서의 같은 이름 분류가 기본으로 골라집니다(없으면 일반). 비우면 자동(지출·경비 → 회계, 휴가·출장 → 인사, 구매 → 비품, 그 밖 → 일반). 새 버전을 만들지 않습니다.</p>
+<h3>문서관리 담당</h3>
+<p>사원 상세의 <b>문서관리 담당 지정</b>을 켜면 그 사원은 자기 부서 문서(볼 수 있는 것)의 분류·사업을 결재가 끝난 뒤에도 바꿀 수 있습니다. 부서 분류 나무는 <b>문서함 → 부서 문서함 → 분류 관리</b>에서 부서장·관리자가 고칩니다(관리자는 부서 코드를 바꿔 다른 부서도).</p>
 <h2>7. 문서번호 형식</h2>
 <p>최종 승인 때 번호가 붙으므로 결번이 생기지 않습니다. 기본 형식은 <code>{dept}-{year}-{seq}</code>(예 DEV-2026-0001).
 쓸 수 있는 자리표시자: <code>{dept}</code> 부서코드, <code>{year}</code> 4자리 연도, <code>{yy}</code> 2자리 연도, <code>{prefix}</code> 양식 접두어(없으면 부서), <code>{seq}</code> 일련번호.</p>

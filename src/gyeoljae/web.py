@@ -14,10 +14,12 @@ import sys
 import threading
 import urllib.parse
 from http import HTTPStatus
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import core
 from . import policy as pol
+from .paper import PAGE_CSS, PAPER_CSS
 from .core import App, BOX_KO, BOXES, BOARDS, GyeolError
 
 MAX_REQ = 32 * 1024 * 1024
@@ -27,6 +29,22 @@ _SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT)
 COOKIE = "gyeol_sid"
 SECURE_COOKIE = os.environ.get("GYEOLJAE_COOKIE_SECURE") == "1"
 TRUST_PROXY = os.environ.get("GYEOLJAE_TRUST_PROXY") == "1"
+_PKG = Path(__file__).resolve().parent
+# 문서 편집기(iframe, 같은 출처): 반입한 hanword(vendor/hanword, scripts/vendor_hanword.py). .py·.md 등은 CTYPES 밖 → 404
+EDITOR_DIR = _PKG / "vendor" / "hanword"
+STATIC_DIR = _PKG / "static"
+CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+          ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2",
+          ".ttf": "font/ttf", ".wasm": "application/wasm"}
+_BASE_CSP = "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+# 스크립트는 편집기 페이지와 그것을 담는 기안 화면에만, 'self' 정적 파일만(인라인·eval 없음)
+CSP = {None: _BASE_CSP,
+       "host": _BASE_CSP + "; script-src 'self'; frame-src 'self'",
+       "doc": _BASE_CSP.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'").replace(
+           "img-src 'self'", "img-src 'self' data:"),
+       # hanword embed.html: 'self' 스크립트만, embed.html 의 style="" 속성 때문에 style 만 'unsafe-inline', /api 호출 없음
+       "editor": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                 "font-src 'self'; connect-src 'none'; form-action 'none'; frame-ancestors 'self'; base-uri 'none'"}
 
 CSS = """
 :root{--bg:#F5F6F8;--fg:#1A1F2B;--mut:#4A5263;--card:#fff;--line:#C9CED8;--acc:#1F4E9A;--primary:#1F4E9A;--acc-fg:#fff;--focus:#FFB000;--warn:#B3261E;--ok:#1B6E35;--badge:#C62828;--side:#EEF1F6;--chip-p:#DCE8FB;--chip-d:#D7F0DD;--chip-r:#FADBD8;--chip-w:#ECEEF2;--chip-l:#FFE8B3}
@@ -46,6 +64,7 @@ nav.bottom{display:none}
 .badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--badge);color:#fff;font-size:12px;line-height:20px;text-align:center;font-weight:700}
 main{min-width:0;max-width:1100px;width:100%;padding:8px 20px 40px}main.solo{margin:0 auto}main:focus{outline:0}
 nav.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}nav.tabs a{padding:4px 12px;border:1px solid var(--line);border-radius:14px;color:var(--fg);text-decoration:none;background:var(--card)}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.tag{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:10px;font-size:12px;color:var(--fg);background:var(--card);text-decoration:none;white-space:nowrap}.tag.mine{border-style:dashed}p.lbl{font-weight:600;margin:8px 0 3px}form.tagedit{margin:6px 0}
 nav.tabs a.on{background:var(--primary);color:#fff;border-color:var(--primary)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0}.card.empty{text-align:center;color:var(--mut);padding:28px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}.dash h3{margin:0 0 6px;font-size:16px}.dash h3 a{color:var(--fg);text-decoration:none}
@@ -75,7 +94,7 @@ input[type=text],input[type=search],input[type=password],input[type=date],input[
 textarea{min-height:180px}label{display:block;margin:8px 0 3px;font-weight:600}label.pick{display:inline-flex}
 button{padding:7px 14px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:#fff;font:inherit;cursor:pointer}
 button.sec{background:var(--card);color:var(--fg);border-color:var(--line)}button.warn{background:var(--warn);border-color:var(--warn);color:#fff}
-form.inline{display:inline}.row{display:flex;flex-wrap:wrap;gap:8px}.row>*{flex:1 1 160px}
+form.inline{display:inline}ul.atts{list-style:none;padding:0;margin:4px 0}ul.atts li{padding:2px 0}label.inline{display:inline}.row{display:flex;flex-wrap:wrap;gap:8px}.row>*{flex:1 1 160px}
 .line{display:flex;flex-wrap:wrap;gap:6px}.step{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:13px}
 .step.approved{border-color:var(--ok)}.step.rejected{border-color:var(--warn)}.step.pending{border-color:var(--acc);border-width:2px}
 .login{max-width:360px;margin:40px auto}textarea.short{min-height:80px}
@@ -88,7 +107,16 @@ form.inline{display:inline}.row{display:flex;flex-wrap:wrap;gap:8px}.row>*{flex:
  nav.bottom a{flex:1;text-align:center;padding:10px 2px;color:var(--fg);text-decoration:none;font-size:13px;min-height:48px}nav.bottom a.on{color:var(--acc);font-weight:700}}
 @media print{@page{size:A4;margin:15mm}header.top,nav.side,nav.bottom,aside.right,.savebar,.noprint,form button{display:none!important}
  body{background:#fff;font-size:11pt}.layout{display:block}main{max-width:none;padding:0}.card{border:0;padding:0}a{color:#000;text-decoration:none}}
-"""
+details.paperprev>summary{cursor:pointer;font-weight:700}
+.edhost iframe{width:100%;height:80vh;min-height:480px;border:1px solid var(--line);background:#e9e9e9;display:block}
+.card.dochtml{overflow-x:auto}.card.dochtml table{border-collapse:collapse;margin:6px 0}
+.card.dochtml th,.card.dochtml td{border:1px solid var(--line);padding:4px 6px}
+""" + PAPER_CSS
+
+
+def _draft_kw(h, new=True):
+    from .web_filing import draft_kwargs  # 순환 import 방지
+    return draft_kwargs(h, new)
 
 
 def esc(s):
@@ -150,9 +178,10 @@ def make_handler(app: App):
 
         def send(self, r: Resp):
             self.send_response(r.status)
-            h = {"Content-Security-Policy": "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; "
-                                            "frame-ancestors 'none'; base-uri 'none'",
-                 "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
+            kind = getattr(self, "_csp", None)
+            h = {"Content-Security-Policy": CSP.get(kind, _BASE_CSP),
+                 "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN" if kind == "editor" else "DENY",
+                 "Referrer-Policy": "same-origin",
                  "Cache-Control": "no-store"}
             if SECURE_COOKIE:
                 h["Strict-Transport-Security"] = "max-age=31536000"
@@ -177,6 +206,7 @@ def make_handler(app: App):
                 self.qs = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
                 self.form, self.files = {}, []
                 self._aside = None
+                self._csp = None
                 self.sess = app.session(self.cookie())
                 self.me = None
                 if self.sess:
@@ -260,7 +290,7 @@ def make_handler(app: App):
                 doc_body = shell(self, app, me, body, box)
             doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8>"
                    f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=6'></head>"
+                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=10'></head>"
                    f"<body>{doc_body}</body></html>")
             return doc.encode("utf-8")
 
@@ -273,6 +303,11 @@ def make_handler(app: App):
             if p == "/s.css":
                 return Resp(200, CSS.encode(), {"Content-Type": "text/css; charset=utf-8",
                                                 "Cache-Control": "public, max-age=86400"})
+            if p == "/paper.css":
+                return Resp(200, PAGE_CSS.encode(), {"Content-Type": "text/css; charset=utf-8",
+                                                     "Cache-Control": "public, max-age=86400"})
+            if p == "/static/editor-host.js":
+                return self.static_file(STATIC_DIR, "editor-host.js")
             if p == "/healthz":
                 from . import __version__
                 return Resp(200, json.dumps({"ok": True, "version": __version__}).encode(),
@@ -291,6 +326,11 @@ def make_handler(app: App):
             user = self.need_login()
             if self.sess.get("must_change") and p != "/me":
                 return redirect("/me")  # 임시 비밀번호 → 변경 전에는 아무 것도 못 함
+            if p in ("/editor", "/editor/"):  # 진입점 = 업스트림 임베드 빌드 embed.html(쿼리 유지)
+                q = urllib.parse.urlsplit(self.path).query
+                return redirect("/editor/embed.html" + ("?" + q if q else ""))
+            if p.startswith("/editor/"):
+                return self.static_file(EDITOR_DIR, p[len("/editor/"):], editor=True)
             from .web_home import route as home_route
             hr = home_route(self, app, user, p)
             if hr is not None:
@@ -303,6 +343,9 @@ def make_handler(app: App):
             if p == "/forms/fav" and self.method == "POST":
                 app.form_fav(user, self.form.get("code", ""), self.form.get("on") == "1")
                 return redirect("/new")
+            mm = re.fullmatch(r"/doc/(\d{1,9})/export\.(hwpx|docx)", p)
+            if mm and self.method == "GET":
+                return self.r_export(user, int(mm.group(1)), mm.group(2))
             mm = re.fullmatch(r"/doc/(\d{1,9})(?:/(\w+)(?:/(\d{1,3}))?)?", p)
             if mm:
                 return self.r_doc(user, int(mm.group(1)), mm.group(2), mm.group(3))
@@ -328,6 +371,20 @@ def make_handler(app: App):
                 from .web_admin import admin_route
                 return admin_route(self, app, user, p)
             raise core.NotFound("페이지 없음")
+
+        def static_file(self, base, name, editor=False):
+            """편집기·정적 파일(패키지 안 디렉터리만, .. 차단). 편집기 HTML 만 SAMEORIGIN 틀 허용 + script-src 'self'."""
+            seg = r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*"  # 점은 이름 안에만('..'·숨김 파일 불가)
+            if not re.fullmatch(rf"(?:{seg}/)*{seg}\.[a-z0-9]{{1,5}}", name):
+                raise core.NotFound("파일 없음")
+            fp = (base / name).resolve()
+            ct = CTYPES.get(fp.suffix)
+            if not ct or base.resolve() not in fp.parents or not fp.is_file():
+                raise core.NotFound("파일 없음")
+            if editor and fp.suffix == ".html":
+                self._csp = "editor"
+            cache = "private, max-age=604800" if editor and fp.parent.name == "font" else "no-cache"  # 글꼴 24MB
+            return Resp(200, fp.read_bytes(), {"Content-Type": ct, "Cache-Control": cache})
 
         def r_login(self):
             err = ""
@@ -385,9 +442,24 @@ def make_handler(app: App):
             """POST 실패 시 입력값을 유지해 다시 보여 주기 위한 값."""
             f = self.form
             d = dict(m or {})
+            if f.get("tags"):  # ⑤ 분류·보관 선택 유지
+                dc = f.get("dclass")
+                d["dclass"] = int(dc) if dc and dc.isdigit() else None
+                d["projects"] = [int(x) for x in self.form_list("project") if x.isdigit()]
+                d["folders"] = [int(x) for x in self.form_list("folder") if x.isdigit()]
+                if f.get("source_id", "").isdigit() and not d.get("id"):
+                    try:
+                        src = app.redraft_prefill(self.me["username"], int(f["source_id"]))
+                        d.update(source_id=src["source_id"], source_number=src["source_number"],
+                                 source_attachments=src["source_attachments"], copy_atts=bool(f.get("copy_atts")))
+                    except GyeolError:
+                        pass
             d.update({"title": f.get("title", ""), "body": f.get("body", ""), "doc_type": f.get("doc_type") or "general",
                       "amount": f.get("amount") or None, "line_input": self._split(f.get("line")),
                       "cc_input": self._split(f.get("cc")), "visibility": "dept" if f.get("dept_open") else "private"})
+            if f.get("doc_html") is not None:  # 편집기 내용 유지(출력 때 다시 정화)
+                d["doc_html"] = f["doc_html"]
+                d["doc_page"] = f.get("doc_page") or d.get("doc_page")
             fd = self._fd(d)
             if fd:
                 d["fields"] = self._fields(fd)
@@ -422,8 +494,9 @@ def make_handler(app: App):
                                          self._split(f.get("cc")), "dept" if f.get("dept_open") else "private",
                                          self.files, submit=f.get("go") == "submit",
                                          doc_type=f.get("doc_type") or "general", amount=f.get("amount") or None,
-                                         form=fd and fd["code"], fields=fd and self._fields(fd))
-                except (core.Invalid, core.NotFound) as e:  # 입력값 유지
+                                         form=fd and fd["code"], fields=fd and self._fields(fd),
+                                         doc_html=f.get("doc_html"), doc_page=f.get("doc_page"), **_draft_kw(self))
+                except (core.Invalid, core.NotFound, core.Forbidden) as e:  # 입력값 유지
                     d = self._form_doc()
                     return Resp(400, self.page("기안", f"<h2>새 기안</h2>{self.doc_form('/new', d, str(e))}"))
                 if f.get("go") == "save":
@@ -438,6 +511,29 @@ def make_handler(app: App):
                 return form_chooser(self, app, user)
             t = self.qs.get("type") if self.qs.get("type") in pol.DOC_TYPES else "general"
             return self.ok("기안", f"<h2>새 기안 · {pol.DOC_TYPES[t]}</h2>" + self.doc_form("/new", {"doc_type": t}))
+
+        def r_export(self, user, did, fmt):
+            """HWPX/DOCX 내려받기(문서를 볼 수 있는 사람만, 아니면 404). 편집기 문서 = 저장된 정본 HTML·용지,
+            그 밖 = 출력 화면(render_paper) HTML 을 hanword 가 정화해 변환."""
+            from . import hanword
+            m = app.show(user, did, mark_read=False)  # 권한 없으면 NotFound
+            if not hanword.available():
+                raise core.NotFound("변환기가 없습니다")
+            if m.get("doc_html"):
+                html = m["doc_html"]
+            else:
+                from .paper import render_paper
+                html = render_paper(app, user, m)
+            data = hanword.export(html, fmt, m.get("doc_page"))
+            name = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]+', "_", m["title"]).strip() or "document"
+            if m.get("number"):
+                name += f"_{m['number']}"
+            name = name[:120] + "." + fmt
+            ct = {"hwpx": "application/hwp+zip",
+                  "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}[fmt]
+            q = urllib.parse.quote(name, safe="")
+            return Resp(200, data, {"Content-Type": ct, "X-Content-Type-Options": "nosniff",
+                                    "Content-Disposition": f"attachment; filename=\"document.{fmt}\"; filename*=UTF-8''{q}"})
 
         def r_doc(self, user, did, act, sub):
             if act == "file" and sub and self.method == "GET":
@@ -456,7 +552,8 @@ def make_handler(app: App):
                                        self._split(f.get("cc")), "dept" if f.get("dept_open") else "private",
                                        self.files, [int(x) for x in self.form_list("remove") if x.isdigit()],
                                        doc_type=f.get("doc_type") or "general", amount=f.get("amount") or "",
-                                       fields=self._fields(fd) if fd else None)
+                                       fields=self._fields(fd) if fd else None, doc_html=f.get("doc_html"),
+                                       doc_page=f.get("doc_page"), **_draft_kw(self, new=False))
                         if f.get("go") == "submit":
                             app.submit(user, did)
                     except core.Invalid as e:
@@ -471,6 +568,12 @@ def make_handler(app: App):
                     raise core.Forbidden("수정할 수 없는 문서입니다")
                 note = "<p class='banner ok' role=status>임시저장했습니다</p>" if self.qs.get("saved") else ""
                 return self.ok("수정", f"{note}<h2>기안 수정 #{did}</h2>" + self.doc_form(f"/doc/{did}/edit", m))
+            if act == "tags" and self.method == "POST":
+                from .web_filing import doc_tags_post
+                return doc_tags_post(self, app, user, did)
+            if act == "redraft" and self.method == "GET":
+                from .web_filing import redraft_page
+                return redraft_page(self, app, user, did)
             if act == "print" and self.method == "GET":
                 from .web_ui import print_view
                 return print_view(self, app, user, app.show(user, did, mark_read=False))

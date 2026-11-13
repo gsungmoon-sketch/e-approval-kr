@@ -30,7 +30,9 @@ from .ops import OpsMixin, ServerConfMixin
 from .home import HomeMixin
 from .mail import MailMixin
 from .forms import FormsMixin
+from .filing import FilingMixin, KEEP as _KEEP
 from . import policy as pol
+from .doctemplate import extract_fields
 
 
 SCHEMA = """
@@ -80,7 +82,7 @@ def _retry_io(fn, *a):
             time.sleep(0.05 * (i + 1))
 
 
-class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, ServerConfMixin):
+class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, FilingMixin, ServerConfMixin):
     def __init__(self, data_dir=None):
         self.dir = Path(data_dir) if data_dir else default_data_dir()
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -103,6 +105,7 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             c.executescript(HOME_SCHEMA)
             c.executescript(MAIL_SCHEMA)
             self._forms_init(c)
+            self._filing_init(c)
             if not c.execute("select count(*) from audit_log").fetchone()[0] and self.audit_path.exists():
                 with open(self.audit_path, encoding="utf-8") as f:  # v0.1 파일 전용 로그 이관
                     for ln in f:
@@ -501,6 +504,44 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             c.after.append((_atomic_write, d / "body.md", body.encode("utf-8")))
         c.after.append((_atomic_write, d / "meta.json", json.dumps(meta, ensure_ascii=False, indent=1).encode("utf-8")))
 
+    def _read_html(self, doc_id):
+        p = self._doc_dir(doc_id) / "doc.html"
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+
+    @staticmethod
+    def _clean_doc_html(html):
+        """편집기 HTML → 정본(hanword sanitize_html → 우리 clean_html). 이 결과만 저장·표시·변환."""
+        from .hanword import canonical_html
+        try:
+            return canonical_html(html)
+        except ValueError as e:
+            raise Invalid(str(e))
+
+    @staticmethod
+    def _doc_page(meta, page):
+        """편집기 용지(page) → 검증해 meta['doc_page'] 에(None 이면 그대로)."""
+        if page is None:
+            return
+        from .hanword import parse_page
+        try:
+            pg = parse_page(page)
+        except ValueError as e:
+            raise Invalid(str(e))
+        if pg is not None:
+            meta["doc_page"] = pg
+
+    def _store_html(self, c, meta, fd, html):
+        """편집기 문서: 기안자가 쓴 그대로(정화만) doc.html(커밋 뒤) 저장 — 서버가 값·합계를 다시 써 넣지 않음.
+        반환 = 검색용 평문 본문."""
+        from .doctemplate import html_text
+        body = html_text(html)
+        if len(body) > MAX_BODY:
+            raise Invalid("본문이 너무 깁니다")
+        data = html.encode("utf-8")
+        meta["doc_sha"] = sha256(data)
+        c.after.append((_atomic_write, self._doc_dir(meta["id"]) / "doc.html", data))
+        return body
+
     def _content_hash(self, doc_id, meta, body):
         d = self._doc_dir(doc_id) / "files"
         atts = []
@@ -516,6 +557,11 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
         if meta.get("form"):  # 양식 문서만(기존 문서 해시 불변)
             core["form"] = [meta["form"]["code"], meta["form"]["version"]]
             core["fields"] = meta.get("fields")
+        if meta.get("doc_sha"):  # 편집기 문서만(기존 문서 해시 불변)
+            p = self._doc_dir(doc_id) / "doc.html"
+            core["doc_html"] = sha256(p.read_bytes()) if p.exists() else "MISSING"
+        if meta.get("doc_page"):  # 편집기 용지(있을 때만 — 기존 문서 해시 불변)
+            core["doc_page"] = meta["doc_page"]
         return sha256(canon(core))
 
     def _validate_line(self, c, drafter, line, cc):
@@ -632,8 +678,11 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
         return t, a
 
     def create_draft(self, actor, title, body, line=None, cc=(), visibility="private", attachments=(), submit=False,
-                     doc_type="general", amount=None, form=None, fields=None):
-        """line: 정책 없는 부서=전체 결재선('!'=전결), 정책 부서=추가 결재자(앞에 붙음)."""
+                     doc_type="general", amount=None, form=None, fields=None, doc_html=None, doc_page=None,
+                     dclass=None, projects=None, folders=None, source_id=None, copy_attachments=False):
+        """line: 정책 없는 부서=전체 결재선('!'=전결), 정책 부서=추가 결재자(앞에 붙음).
+        dclass: 부서 분류 id(None=양식 기본값, 'none'/0=미분류), projects: 사업 id 목록, folders: 내 폴더 id 목록.
+        source_id: "이 문서로 기안"의 원문(볼 수 있어야 함) — copy_attachments 면 원문 첨부를 새 파일로 복사."""
         title, body = self._check_text(title, body)
         if visibility not in ("private", "dept"):
             raise Invalid("visibility는 private|dept")
@@ -644,16 +693,29 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             u = self._user(c, actor)
             fmeta = {"dept": u["dept"]}
             self._require_form(c, form)
+            fd = None
+            if doc_html is not None:  # 편집기 문서: 값은 HTML 칸에서 뽑아 서버가 다시 검증
+                doc_html = self._clean_doc_html(doc_html)
+                if form:
+                    fields = extract_fields(self._form_def(c, form), doc_html)
             if form:
                 fmeta["form"] = self._start_form(c, u, form)
-                d = self._apply_form(c, u, fmeta, fields or {}, submit, len(attachments or ()))
+                d = fd = self._apply_form(c, u, fmeta, fields or {}, submit, len(attachments or ()))
                 doc_type = fmeta["doc_type"]
-                if d.get("amount"):
-                    amount = fmeta["amount"]
-                elif doc_type == "expense" and amount is None:
-                    raise Invalid("지출 문서는 금액이 필요합니다")
+                amount = fmeta["amount"] if d.get("amount") else None  # 양식 문서 금액 = 양식 항목만
             steps, ccs, pref = self._resolve_line(c, u, doc_type, amount, line_input, cc_input)
             self._form_cc(c, fmeta, steps, ccs, actor)
+            src_meta = None
+            if source_id is not None:
+                self._check_view(c, actor, int(source_id))  # 원문을 볼 수 있는 사람만
+                src_meta, _ = self._read_doc(int(source_id))
+                if copy_attachments:
+                    sd = self._doc_dir(int(source_id)) / "files"
+                    try:
+                        attachments = list(attachments or ()) + [(a["name"], (sd / a["stored"]).read_bytes())
+                                                                 for a in src_meta.get("attachments", [])]
+                    except OSError:  # 원문 첨부가 디스크에 없음 → 서버 오류 대신 안내
+                        raise Invalid("원문 첨부 파일을 읽을 수 없습니다")
             ts = now_iso()
             cur = c.execute("insert into docs(title,drafter,dept,status,created,visibility,updated) values(?,?,?,?,?,?,?)",
                             (title, actor, u["dept"], "draft", ts, visibility, ts))
@@ -667,6 +729,17 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             if form:
                 meta.update(form=fmeta["form"], fields=fmeta["fields"])
                 c.execute("update docs set form=? where id=?", (form, did))
+            if src_meta is not None:
+                meta["source_doc_id"] = int(source_id)
+                c.execute("update docs set source_doc_id=? where id=?", (int(source_id), did))
+            cid = self._default_class(c, u["dept"], form, doc_type) if dclass is None else \
+                self._check_class(c, u["dept"], 0 if dclass == "none" else dclass)
+            self._set_tags_c(c, actor, did, cid, projects or [], initial=True)
+            mine = {r["id"] for r in c.execute("select id from folders where owner=?", (actor,))}
+            for fid in [int(x) for x in folders or [] if str(x).isdigit()]:
+                if fid not in mine:
+                    raise NotFound("폴더 없음")
+                c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)", (fid, did, ts))
             dd = self._doc_dir(did)
             if dd.exists():  # 롤백된 이전 시도의 고아 디렉터리(같은 id 재사용) 정리
                 _rmtree(dd)
@@ -674,8 +747,14 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             self._store_attachments(did, meta, attachments)
             self._hist(meta, actor, "draft")
             self._audit(c, actor, "draft", did, {"title": title})
+            if src_meta is not None:
+                self._audit(c, actor, "draft_from", did, {"source": int(source_id), "source_number": src_meta.get("number"),
+                                                          "attachments": bool(copy_attachments)})
             if submit:
                 self._do_submit(c, actor, meta)
+            if doc_html is not None:
+                body = self._store_html(c, meta, fd, doc_html)
+                self._doc_page(meta, doc_page)
             self._index(c, meta, body)
             self._write_doc(c, meta, body)
         return self.show(actor, did, mark_read=False)
@@ -689,9 +768,12 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
         return r
 
     def edit_draft(self, actor, doc_id, title=None, body=None, line=None, cc=None, visibility=None,
-                   add_attachments=(), remove_attachments=(), doc_type=None, amount=None, fields=None):
+                   add_attachments=(), remove_attachments=(), doc_type=None, amount=None, fields=None, doc_html=None,
+                   doc_page=None, dclass=_KEEP, projects=None):
         with self._tx() as c:
             self._editable(c, actor, doc_id)
+            self._set_tags_c(c, actor, int(doc_id), _KEEP if dclass is _KEEP else (0 if dclass in (None, "none") else dclass),
+                             projects)
             meta, old_body = self._read_doc(doc_id)
             t, b = self._check_text(title if title is not None else meta["title"],
                                     body if body is not None else old_body)
@@ -699,9 +781,11 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             fd = None
             if meta.get("form"):  # 양식 문서: 종류는 양식이 정함, 금액 필드가 있으면 금액도
                 fd = self._form_def(c, meta["form"]["code"], meta["form"]["version"])
-                doc_type = None
-                if fd.get("amount"):
-                    amount = None
+                doc_type = amount = None  # 종류·금액은 양식이 정함(직접 입력 무시)
+            if doc_html is not None:
+                doc_html = self._clean_doc_html(doc_html)
+                if fd is not None:
+                    fields = extract_fields(fd, doc_html)
             if doc_type is not None or amount is not None:
                 meta["doc_type"], meta["amount"] = self._type_amount(
                     doc_type if doc_type is not None else meta.get("doc_type"),
@@ -732,6 +816,10 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
                 meta["line"], meta["cc"], meta["policy"] = self._resolve_line(
                     c, u, meta["doc_type"], meta.get("amount"), meta["line_input"], meta["cc_input"])
                 self._form_cc(c, meta, meta["line"], meta["cc"], actor)
+            if doc_html is not None or meta.get("doc_sha"):  # 편집기 문서는 값이 바뀌면 HTML 칸도 다시 씀
+                b = self._store_html(c, meta, fd, doc_html if doc_html is not None else self._read_html(doc_id))
+                if doc_html is not None:
+                    self._doc_page(meta, doc_page)
             meta["rev"] = meta.get("rev", 0) + 1
             meta["submitted"] = None  # 재상신 전까지 결재선·부서장에게 숨김
             c.execute("delete from doc_party where doc_id=? and kind='proxy'", (doc_id,))
@@ -871,7 +959,7 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
 
     def _make_readonly(self, doc_id):
         d = self._doc_dir(doc_id)
-        for p in list((d / "files").iterdir()) + [d / "meta.json", d / "body.md"]:
+        for p in list((d / "files").iterdir()) + [d / "meta.json", d / "body.md", d / "doc.html"]:
             _try_chmod(p, 0o444)
 
     def reject(self, actor, doc_id, comment, rev=None):
@@ -927,8 +1015,20 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Serv
             reads = {r["username"]: r["at"] for r in c.execute("select * from reads where doc_id=?", (doc_id,))}
             delegators = self._delegators(c, actor)
         meta["body"] = body
+        if meta.get("doc_sha"):
+            meta["doc_html"] = self._read_html(doc_id)
         meta["reads"] = reads
         meta["status_ko"] = STATUS_KO[meta["status"]]
+        if meta.get("source_doc_id"):  # "이 문서로 기안"의 원문: 번호(없으면 #id), 링크는 볼 수 있을 때만
+            sid = meta["source_doc_id"]
+            with self._ro() as c:
+                r = c.execute("select number from docs where id=?", (sid,)).fetchone()
+                try:
+                    self._check_view(c, actor, sid)
+                    can = True
+                except NotFound:
+                    can = False
+            meta["source"] = {"id": sid, "number": (r["number"] if r else None) or f"#{sid}", "can_view": can}
         cur = meta.get("cur_user")
         meta["can"] = {
             "edit": actor == meta["drafter"] and meta["status"] in ("draft", "withdrawn", "rejected"),

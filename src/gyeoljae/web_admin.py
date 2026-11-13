@@ -128,6 +128,9 @@ def admin_route(h, app, user, p):
             return redirect(back)
         if post and act == "role":
             return pend(app.emp_set_role(user, who, f.get("role")), back)
+        if post and act == "docmgr":
+            app.set_doc_manager(user, who, f.get("on") == "1")
+            return redirect(back)
         if post and act == "resetpw":
             r = app.emp_reset_password(user, who)
             return ok("임시 비밀번호", f"<div class=card><p>{esc(r['username'])} 임시 비밀번호: <b class=ok>"
@@ -157,7 +160,12 @@ def admin_route(h, app, user, p):
                 f"<form method=post action='{back}/role' class=inline>{c}<input type=hidden name=role "
                 f"value='{'user' if e['role'] == 'admin' else 'admin'}'><button class=sec>"
                 f"{'관리자 해제' if e['role'] == 'admin' else '관리자 지정'}</button></form> "
+                f"<form method=post action='{back}/docmgr' class=inline>{c}<input type=hidden name=on "
+                f"value='{'0' if e.get('doc_manager') else '1'}'><button class=sec>"
+                f"{'문서관리 담당 해제' if e.get('doc_manager') else '문서관리 담당 지정'}</button></form> "
                 f"<form method=post action='{back}/resetpw' class=inline>{c}<button class=warn>임시 비밀번호 재발급</button></form>"
+                f"<p class=mut>문서관리 담당 = 자기 부서 문서의 분류·사업을 완료 뒤에도 바꿀 수 있음"
+                f"{' (지정됨)' if e.get('doc_manager') else ''}.</p>"
                 f"<p class=mut>퇴사·휴직 = 로그인 차단·결재선 제외. 문서·기록은 지우지 않습니다.</p></div>"
                 f"<div class=card><h3>변경 이력</h3><table>{hist}</table></div>")
         return ok("사원 상세", body)
@@ -326,6 +334,16 @@ def admin_route(h, app, user, p):
                 ctl = (f"{head}<input type=text name=value value='{esc(v['value'])}' aria-label='문서번호 형식' "
                        f"style='width:14em'> <button class=sec>저장</button></form>")
                 return f"<tr><td>{esc(v['label'])}</td><td><code>{esc(v['value'])}</code></td><td>{ctl}</td></tr>"
+            if k in ("company_name", "doc_mark"):
+                lab, mx = ("회사명", 40) if k == "company_name" else ("문서 표시", 20)
+                ctl = (f"{head}<input type=text name=value value='{esc(v['value'])}' aria-label='{lab}' maxlength={mx} "
+                       f"style='width:14em'> <button class=sec>저장</button></form>")
+                return f"<tr><td>{esc(v['label'])}</td><td>{esc(v['value']) or '-'}</td><td>{ctl}</td></tr>"
+            if k == "paper_default":
+                opts = "".join(f"<option value={d} {'selected' if v['value'] == d else ''}>{t}</option>"
+                               for d, t in (("corporate", "기업 결재 양식"), ("gov", "공문서 기안문")))
+                ctl = f"{head}<select name=value aria-label='기본 출력 서식'>{opts}</select> <button class=sec>저장</button></form>"
+                return f"<tr><td>{esc(v['label'])}</td><td>{esc(v['value'])}</td><td>{ctl}</td></tr>"
             if k == "emp_digits":
                 opts = "".join(f"<option value={d} {'selected' if v['value'] == d else ''}>{d}자리</option>" for d in (2, 3))
                 ctl = f"{head}<select name=value>{opts}</select> <button class=sec>저장</button></form>"

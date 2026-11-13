@@ -1,0 +1,76 @@
+# Vendored hanword (embed build)
+
+- source: hanword 0.1.4, commit `f9fec8834e7da5f0e213ad2f54a4f61076bde0bb` (MIT, see LICENSE)
+- vendored: 2026-11-14 by `scripts/vendor_hanword.py` (re-run it to update; do not edit files here by hand)
+- protocol and rules: docs/embed.md
+
+## Local patches
+
+None. Source is the output of upstream `scripts/export_embed.py` (its hygiene check: shipped
+fonts match licenses/README.md, embed.html current with no inline scripts, no internal host names).
+Every file here is a byte-identical subset of that export (checked by this script).
+
+Fonts (all SIL OFL 1.1, texts in licenses/fonts/): exactly as shipped upstream, including the unmodified
+original Nanum Gothic/Myeongjo TTFs. Fonts upstream excluded (Nanum woff2 subsets, which keep the
+reserved name; Hamchorom; UnBatang) must not be added here.
+
+
+Python modules (import closure of hanword_embed, verified by a real import + HWPX/DOCX conversion in `python -I`): docconv, docxconv, hanword_core, hanword_embed, hanword_keep, hanword_model, hwpx_std, hwpxconv
+
+## Files (sha256)
+
+9df84c5388ae0cc03d09b03b621494ad0623558c8b7f05ac1e4ea8fea96f700c  LICENSE
+875ae7ec1370ff9fb73701db7c334bddc8f93d8da12ec712da7854a71d970840  NOTICE-hwpx_skeleton.txt
+154ec4a9834895d442883116ed4f318d54185b0c3dc5119bf105f1d80cbee3ba  docconv.py
+bd45ddb4b5c6ff340c009e211dc2d04cd0606c8484aec67cc33219d4b02a8bf5  docs/embed.md
+d73640506ebdf9459debf3357c4ae39544a2010966b088a5bc15e77d8be41ba9  docxconv.py
+2868de7da13ddd14f45e9a50d82a649ce5ecff2e6e36d9e9590d6a1db4d3d1fa  editor.css
+d16e46f657339eddf6db067cc566a5177927d42a1e46175c38782e1aa5ec2af5  embed.html
+5a2caca4ffdf931b8ae9e9b168deaa9d272e2124843fb94afb0c7c2ed17e4137  font/D2Coding-400.woff2
+7ad949ea04eab40c0d620db9a27c54e71d1c50f3d2bd899b3c887b18ea0151ee  font/D2Coding-700.woff2
+f96298f9fb18e364d2370f4c3ce948ac67a2b61af992d7234bc15c42b033c674  font/NanumGothic-Bold.ttf
+76f45ef4a6bcff344c837c95a7dcc26e017e38b5846d5ae0cdcb5b86be2e2d31  font/NanumGothic-Regular.ttf
+bc9ed8e60d93fe6db054b8fb988481b625f2eef8cb2317ad0e9834681b8fe3f3  font/NanumMyeongjo-Bold.ttf
+7ed9e8653a8ed04285d51dc343ffea6eb3d9c73afc27383ea8929ee4ffd03205  font/NanumMyeongjo-Regular.ttf
+3aa0d1d63f3b5b2a33053a41a34512eac63abfb1dc2112aeda04733656a1a6d9  font/NotoSansKR-400.woff2
+dab3d492daa687386292cff1499225db580f931f800ee0d124eb0636378c6020  font/NotoSansKR-700.woff2
+9db318b65ee9c575a43e7efd273dbdd1afef26e467eea3e1073a50e1a6595f6d  font/NotoSansKR.ttf
+c9a1e3ac69994d680883b53b1fd83d520733b704792522a932bfaa276117de45  font/NotoSerifKR-400.woff2
+504d6af6abb882acd912d47bafa383c4512a6c8c33635e4e8fb37111d9310941  font/NotoSerifKR-700.woff2
+fad853f7f47c6c8b103171e7193fa095708cdcd70850a71d93aa5379e8a61d63  font/Pretendard-400.woff2
+4609c3356e536fafe38f4add0daeceb3d8595d3057bce13c428c33ddbd43d362  font/Pretendard-700.woff2
+00db298c944cd763e14c8808ff4f76719c5cbee1188569f3079d7f5ece90dfed  hanword_core.py
+ff925b988f2bd371c40e1cfe925e497fcc10586a1085f4ff1760e0bea732e734  hanword_embed.py
+c9093bdaf8279b3a1dfd974999b8e93997a24a26aa51c874c7634d91d0ac0b30  hanword_keep.py
+46cb759764df99345d17bec6ac1f63ef9e9328b7cbb95ce601645bf67677562e  hanword_model.py
+e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb  html2canvas.min.js
+499d1503fac5f6de76a27bd70d76b33b63988a423443700a889112d284b9d2dd  htmlpdf.js
+2b411d308b37decd5d4d358c77ea44d594060a116405c26f261e8e3ea934efcc  hwpx_skeleton.hwpx
+ea138fa8dd1bef697295bd868de0cb92bfbaa2434d67129f98e0b97361c07b08  hwpx_std.py
+b99db93f4b67c5bbdfa063cb2022bd54a1d06df1a4bafc07667f403d1d66f1b8  hwpxconv.py
+98ccf17aa10c20bb1301762618fcc9b6ab3a4e7f26b6071d64d0b41154df3875  jspdf.min.js
+cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  licenses/Apache-2.0.txt
+4b0a53549b67d3144397e9f5975e35eb8db5d890f9dfa0e45654102a799f50cb  licenses/OFL-1.1.txt
+d5e4aade9417ecaf687042bcfb1116ceebe7d1f64c07c23d8d4568141a53d306  licenses/README.md
+1807e8dec4d65f474cbf9be39f5e2254ecb81702babc320749e272ea66ffcc69  licenses/fonts/D2Coding-OFL.txt
+eeacf16032901d0ed0456876ec77b8f0fda6b3fecec7d972f8543eb602e6c30f  licenses/fonts/Nanum-OFL.txt
+8eb1c1019fe7fe6d0b6e7d7bbbba1d9cbdd969d8c5f26455708f6cfb8a77284c  licenses/fonts/NanumMyeongjo-OFL.txt
+6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2  licenses/fonts/NotoSansCJK-OFL.txt
+6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2  licenses/fonts/NotoSerifCJK-OFL.txt
+d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04  licenses/fonts/Pretendard-OFL.txt
+cd3b2db8b2c7d4f274c2d72fe7c739c017ef45da6ac1e06c6faf464d0b9e4ac3  licenses/html2canvas-LICENSE.txt
+4779f3441ef64c2c7e92e4aa8c5b9f03004c432956af056384247bf2cfecee2f  licenses/jsPDF-LICENSE.txt
+22f745118244be45519b6afcd3fbf320c5aa734a485014c98243721818d6c7d1  wp-board.js
+282b92462bdf261083ed7a14b2c844a58855550182318c95e9c0680eebbef8d3  wp-core.js
+5903225556850997fbc135411cfc2743e218d24ab041231d0d72b3908b12c7d7  wp-embed.js
+d8ab906e45e9d136c00af5bb1f0fd43d040c81b58d6672d1c0297088f2d4de79  wp-find.js
+2cba9a36b327a5463f8439558891cd430a8bbeea16eba1f25c264f0e2d19795e  wp-format.js
+600e73a4d1eda3cb875b434df6c173f70f842b0dbabf31e49be3e87bea2b8d62  wp-fullview.js
+124f135fd220bae5499a94693a578b48813fdbd3cc388e0c1f232990f40affde  wp-input.js
+1ee7690a85971c63c6365401de23ad98e4ea172ec7e886fe2d61624a5db049e7  wp-io.js
+ad85e64f8de773a57db91c023cfa9e6e513c28b94e149e597d954913870fc63b  wp-obj.js
+d87355e85ef1109860a1807fe0a178555a5833872de1d2869daf4040cd0eda16  wp-page.js
+0c255884221fa69d4242d2eb01529b041452a436e8498c78c46d9f2769649af4  wp-preview.js
+a559d90d3f6719e303f9d23ccd0db7d1a3633675dc4b170ffce6bd6c39eae026  wp-print.js
+ca0853f32e8a7f456103ce98f466706072eed87e79d1f833fac415460ace8be6  wp-ruler.js
+c73756402a8f4d496054b42f2e1b9b43e3d0b75011812200d2cda8fa0e11cf66  wp-table.js

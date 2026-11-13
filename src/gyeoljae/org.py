@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 import secrets
 
 from . import policy as pol
@@ -23,7 +24,11 @@ SETTINGS = {"two_person": ("2인 승인(정책·권한 변경에 두 번째 관�
             "allow_freeform": ("양식 없는 자유 기안 허용(끄면 양식이 있을 때 반드시 양식으로 기안 — 지출을 일반으로 올려 전결 한도를 피하는 것 방지)",
                                False),
             "emp_digits": ("자동 사번 일련번호 자릿수(입사일 YYMMDD 뒤, 2 또는 3) — 새 번호부터 적용", 2),
-            "show_contacts": ("조직도에 이메일·전화 공개", False)}
+            "show_contacts": ("조직도에 이메일·전화 공개", False),
+            "company_name": ("회사명 — 출력 문서 머리(공문서)·꼬리에 표시(비우면 표시 안 함)", ""),
+            "doc_mark": ("문서 표시(예: 대외비) — 출력 문서 위(기업: 결재란 위 오른쪽, 공문서: 기관명 위 왼쪽)에 빨간 굵은 글씨, "
+                         "20자 이내(비우면 표시 안 함)", ""),
+            "paper_default": ("기본 출력 서식 — corporate(결재란 위) / gov(공문서 기안문), 양식에 layout 이 없을 때", "corporate")}
 POS_CODE_RE = re.compile(r"^[a-z][a-z0-9_]{1,19}$")
 EMAIL_RE = re.compile(r"^[^@\s<>\"']{1,64}@[^@\s<>\"']{1,190}$")
 PHONE_RE = re.compile(r"^[0-9+()\- ]{3,20}$")
@@ -150,6 +155,12 @@ class OrgMixin:
         with self._ro() as c:
             return {k: {"value": self._setting(c, k), "label": v[0]} for k, v in SETTINGS.items()}
 
+    def paper_settings(self):
+        """출력 서식에 쓰는 공개 설정(로그인한 누구나 — 문서 출력용)."""
+        with self._ro() as c:
+            return {"company_name": self._setting(c, "company_name") or "", "doc_mark": self._setting(c, "doc_mark") or "",
+                    "paper_default": self._setting(c, "paper_default") or "corporate"}
+
     def setting_set(self, actor, key, value):
         self._require_admin(actor)
         if key not in SETTINGS:
@@ -164,6 +175,16 @@ class OrgMixin:
         elif key == "doc_number":
             from .forms import check_number_format
             value = check_number_format(value)
+        elif key in ("company_name", "doc_mark"):
+            v = unicodedata.normalize("NFC", str(value or ""))
+            value = " ".join("".join(ch for ch in v if unicodedata.category(ch)[0] != "C").split())
+            if key == "doc_mark" and len(value) > 20:
+                raise Invalid("문서 표시는 20자 이내")
+            value = value[:40]
+        elif key == "paper_default":
+            value = str(value or "").strip().lower()
+            if value not in ("corporate", "gov"):
+                raise Invalid("기본 출력 서식은 corporate 또는 gov")
         else:
             value = bool(value) if not isinstance(value, str) else value.lower() in ("1", "on", "true", "yes", "y")
         with self._tx() as c:
@@ -251,6 +272,7 @@ class OrgMixin:
         if c.execute("select 1 from depts where code=?", (code,)).fetchone():
             raise Invalid(f"이미 있는 부서: {code}")
         c.execute("insert into depts(code,name,created) values(?,?,?)", (code, name, now_iso()))
+        self._seed_classes(c, code)  # 기본 부서 분류(회계·인사·비품·일반)
 
     def add_dept(self, actor, code, name):
         self._require_admin(actor)

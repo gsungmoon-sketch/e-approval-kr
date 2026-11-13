@@ -20,26 +20,29 @@ class FormDefPureTest(unittest.TestCase):
         d = dict(fdm.builtin_defs())
         v, amt = fdm.normalize(d["expense"], {"purpose": "장비", "items": ITEMS, "pay": "법인카드"}, 1, True)
         self.assertEqual(len(v["items"]["rows"]), 2)  # 빈 행 버림
-        self.assertEqual(v["items"]["rows"][0]["amount"], 600000)
-        self.assertEqual(amt, 630000)
-        tampered = [dict(ITEMS[0], amount="1")]  # 클라이언트 계산값 무시
-        self.assertEqual(fdm.normalize(d["expense"], {"items": tampered})[1], 600000)
-        with self.assertRaises(Invalid):  # 증빙 첨부 필수
-            fdm.normalize(d["expense"], {"purpose": "x", "items": ITEMS, "pay": "법인카드"}, 0, True)
-        with self.assertRaises(Invalid):
-            fdm.normalize(d["expense"], {"pay": "비트코인"})
-        with self.assertRaises(Invalid):
-            fdm.normalize(d["expense"], {"items": [{"item": "a", "qty": "x1", "price": "1"}]})
+        self.assertIsNone(v["items"]["rows"][0]["amount"])  # 사용자 결정: 수량×단가 계산 안 함
+        self.assertEqual(v["items"]["sum"], {})  # 합계도 계산 안 함
+        self.assertIsNone(amt)  # 양식 문서 금액은 항상 None
+        typed = [dict(ITEMS[0], amount="1")]  # 기안자가 적은 금액은 그대로 보관, 정책엔 안 씀
+        v, amt = fdm.normalize(d["expense"], {"items": {"rows": typed, "sum": {"amount": "999억"}}})
+        self.assertEqual((v["items"]["rows"][0]["amount"], v["items"]["sum"]["amount"], amt), (1, 99900000000, None))
+        # 사용자 결정: 금액·기간·필수·증빙은 막지 않음(결재자 확인) — 값은 그대로, 금액은 못 읽으면 None
+        fdm.normalize(d["expense"], {"purpose": "x", "items": ITEMS, "pay": "법인카드"}, 0, True)
+        self.assertEqual(fdm.normalize(d["expense"], {"pay": "비트코인"})[0]["pay"], "비트코인")
+        v, amt = fdm.normalize(d["expense"], {"items": [{"item": "a", "qty": "x1", "price": "1"}]})
+        self.assertIsNone(amt)
+        self.assertEqual(v["items"]["rows"][0]["qty"], "x1")
         lv = d["leave"]
         v, _ = fdm.normalize(lv, {"kind": "연차", "period": {"from": "2026-11-13", "to": "2026-11-17"}, "backup": "a"},
                              0, True)
         self.assertEqual(v["period"]["days"], 3)  # 금·월·화 (주말 제외)
         v, _ = fdm.normalize(lv, {"kind": "오전반차", "period": "2026-11-16~2026-11-16", "backup": "a"}, 0, True)
         self.assertEqual(v["period"]["days"], 0.5)
-        with self.assertRaises(Invalid):
-            fdm.normalize(lv, {"kind": "연차", "period": {"from": "2026-11-17", "to": "2026-11-13"}})
-        with self.assertRaises(Invalid):  # 필수(대체 근무자) 누락 → 상신 불가
-            fdm.normalize(lv, {"kind": "연차", "period": "2026-11-16~2026-11-16"}, 0, True)
+        v, _ = fdm.normalize(lv, {"kind": "연차", "period": {"from": "2026-11-17", "to": "2026-11-13"}})
+        self.assertIsNone(v["period"]["days"])  # 거꾸로 된 기간: 막지 않고 일수 없음
+        v, _ = fdm.normalize(lv, {"kind": "연차", "period": {"from": "다음주 월", "to": ""}})
+        self.assertEqual(v["period"]["from"], "다음주 월")
+        fdm.normalize(lv, {"kind": "연차", "period": "2026-11-16~2026-11-16"}, 0, True)  # 필수 누락도 통과
         fdm.normalize(lv, {"kind": "연차"}, 0, False)  # 임시저장은 필수 미검사
 
     def test_check_def_errors(self):
@@ -57,16 +60,16 @@ class FormDefPureTest(unittest.TestCase):
 class FormAuditFixTest(unittest.TestCase):
     def test_calc_and_numbers(self):
         d = dict(fdm.builtin_defs())["expense"]
-        with self.assertRaises(Invalid):  # 수량 비우고 금액 직접 넣기 → 거부
-            fdm.normalize(d, {"items": [{"item": "서버", "qty": "", "price": "5000만", "amount": "1"}]})
         v, amt = fdm.normalize(d, {"items": [{"item": "서버", "qty": "1", "price": "5000만", "amount": "1"}]})
-        self.assertEqual(amt, 50000000)
-        with self.assertRaises(Invalid):
-            fdm.normalize(d, {"items": [{"item": "a", "qty": "-1", "price": "1000"}]})
+        self.assertEqual((v["items"]["rows"][0]["amount"], amt), (1, None))  # 적은 그대로, 금액은 정책에 안 씀
+        v, amt = fdm.normalize(d, {"items": [{"item": "서버", "qty": "1", "price": "5000만", "amount": "약 5천"}]})
+        self.assertEqual((v["items"]["rows"][0]["amount"], amt), ("약 5천", None))  # 못 읽어도 보관
         cd = fdm.check_def({"name": "t", "fields": [{"key": "t", "type": "table", "columns": [
             {"key": "a", "type": "number"}, {"key": "b", "type": "number"}, {"key": "c", "type": "number", "calc": "a*b"}],
             "sum": ["c"]}]})
         v, _ = fdm.normalize(cd, {"t": [{"a": "0.1", "b": "0.1"}]})
+        self.assertIsNone(v["t"]["rows"][0]["c"])  # 계산 열도 기안자가 적음
+        v, _ = fdm.normalize(cd, {"t": [{"a": "0.1", "b": "0.1", "c": "0.01"}]})
         self.assertEqual(v["t"]["rows"][0]["c"], 0.01)
         fdm.normalize(cd, v, 0, True)  # 저장값 재검증 통과
         got = fdm.from_flat(d, {"f.items.49.item": "x", "f.items.49.qty": "1", "f.items.49.price": "1"}.get)
@@ -95,23 +98,27 @@ class FormsTest(unittest.TestCase):
         return self.app.create_draft("dev1", "장비 구입", "", form="expense", attachments=list(files), submit=submit,
                                      fields={"purpose": "장비", "items": items, "pay": "법인카드"})
 
-    def test_amount_drives_threshold(self):
+    def test_form_never_capped_jeongyeol(self):
         a = self.app
-        m = self._exp([{"item": "마우스", "qty": 2, "price": "25만"}])  # 50만 → 부서장 전결
-        self.assertEqual((m["doc_type"], m["amount"]), ("expense", 500000))
-        self.assertEqual([s["final"] for s in m["line"]], [False, True, False])
+        m = self._exp([{"item": "마우스", "qty": 2, "price": "25만", "amount": "50만"}])  # 사용자 결정: 금액 안 꺼냄
+        self.assertEqual((m["doc_type"], m["amount"]), ("expense", None))
+        self.assertEqual([s["final"] for s in m["line"]], [False, False, False])  # 한도 전결 없음 → 전체 결재선
+        self.assertEqual(m["fields"]["items"]["rows"][0]["amount"], 500000)  # 적은 그대로 보관
         self.assertIn("ceo", m["cc"])  # 재정 양식 → 경영지원 부서장 필수 참조
         self.assertEqual(m["form"]["retention"], "5년")
-        m2 = self._exp([{"item": "서버", "qty": 1, "price": "150만"}])
+        # 합계 칸·금액 인자를 클라이언트가 보내도 정책엔 안 씀
+        m2 = a.create_draft("dev1", "x", "", form="expense", submit=True, amount="1",
+                            fields={"items": {"rows": [{"item": "a", "qty": 1, "price": 10, "amount": 10}],
+                                              "sum": {"amount": "10"}}})
+        self.assertEqual((m2["amount"], m2["fields"]["items"]["sum"]), (None, {"amount": 10}))
         self.assertEqual([s["final"] for s in m2["line"]], [False, False, False])
-        # 양식 문서는 금액을 직접 못 바꿈(필드가 정함)
         d = a.create_draft("dev1", "x", "", form="expense", fields={"items": [{"item": "a", "qty": 1, "price": 10}]})
         d = a.edit_draft("dev1", d["id"], amount="1", doc_type="일반")
-        self.assertEqual((d["amount"], d["doc_type"]), (10, "expense"))
-        with self.assertRaises(Invalid):  # 증빙 없이 상신 불가
-            a.submit("dev1", d["id"])
+        self.assertEqual((d["amount"], d["doc_type"]), (None, "expense"))
+        a.submit("dev1", d["id"])  # 증빙 없어도 상신(결재자가 확인)
         a.approve("devtl", m["id"])
-        m = a.approve("devlead", m["id"])
+        a.approve("devlead", m["id"])
+        m = a.approve("boss", m["id"])
         self.assertEqual(m["status"], "done")
         self.assertRegex(m["number"], r"^DEV-\d{4}-\d{4}$")
         self.assertTrue(a.verify_audit()["ok"])
@@ -140,7 +147,8 @@ class FormsTest(unittest.TestCase):
         a.setting_set("admin", "doc_number", "{prefix}-{yy}-{seq}")
         m = self._exp([{"item": "a", "qty": 1, "price": "1만"}])
         a.approve("devtl", m["id"])
-        m = a.approve("devlead", m["id"])
+        a.approve("devlead", m["id"])
+        m = a.approve("boss", m["id"])  # 양식 문서는 한도 전결 없음 → 전체 결재선
         self.assertRegex(m["number"], r"^지출-\d\d-0001$")
         g = a.create_draft("dev1", "일반", "", form="general", submit=True, fields={"purpose": "p"})
         g = a.approve("devlead", g["id"])
@@ -170,7 +178,8 @@ class FormsTest(unittest.TestCase):
         a.setting_set("admin", "doc_number", "{dept}-{year}-{seq}X")
         m = self._exp([{"item": "a", "qty": 1, "price": "1만"}])
         a.approve("devtl", m["id"])
-        self.assertRegex(a.approve("devlead", m["id"])["number"], r"^DEV-\d{4}-0001X$")
+        a.approve("devlead", m["id"])
+        self.assertRegex(a.approve("boss", m["id"])["number"], r"^DEV-\d{4}-0001X$")
         a.setting_set("admin", "doc_number", "{dept}-{year}-{seq}")  # 기본으로 복귀해도 이어서
         a.setting_set("admin", "doc_number", "{prefix}-{year}-{seq}")
         g = a.create_draft("dev1", "g", "", form="general", submit=True, fields={"purpose": "p"})
@@ -243,23 +252,23 @@ class FormsWebTest(unittest.TestCase):
             self.assertIn("휴가신청서", body)
             st, body, _ = c.req("/new?form=expense")
             self.assertIn("f.items.0.qty", body)
+            self.assertIn("name='f.items.0.amount'", body)  # 금액 열도 입력 칸
+            self.assertNotIn("(자동)", body)
+            self.assertNotIn("저장 시 계산", body)
             tok = c.csrf("/new?form=expense")
             fields = {"csrf": tok, "form": "expense", "title": "<b>장비</b>", "body": "", "line": "devlead", "cc": "",
                       "f.purpose": "모니터", "f.items.0.item": "모니터", "f.items.0.qty": "2",
                       "f.items.0.price": "300000", "f.items.0.amount": "1", "f.pay": "법인카드", "go": "submit"}
             data, ct = multipart(fields, [])
-            st, body, _ = c.req("/new", data, ctype=ct)
-            self.assertEqual(st, 400)  # 증빙 첨부 필수
-            self.assertIn("증빙", body)
-            self.assertIn("value='모니터'", body)  # 입력 유지
-            data, ct = multipart(fields, [("files", ("영수증.pdf", b"%PDF"))])
-            st, b2, h = c.req("/new", data, ctype=ct)
+            st, b2, h = c.req("/new", data, ctype=ct)  # 증빙 없어도 상신됨 — 문서에 경고
             self.assertEqual(st, 303, __import__("re").findall("class=err role=alert>([^<]*)", b2))
             did = app.list_box("dev1", "progress")[0]["id"]
             m = app.show("dev1", did)
-            self.assertEqual(m["amount"], 600000)
+            self.assertIsNone(m["amount"])  # 금액 안 꺼냄
+            self.assertEqual(m["fields"]["items"]["rows"][0]["amount"], 1)  # 금액 열도 입력 칸 — 적은 그대로
             st, body, _ = c.req(f"/doc/{did}")
-            self.assertIn("600,000", body)
+            self.assertNotIn("금액을 읽을 수 없어", body)
+            self.assertIn("300,000", body)
             self.assertIn("보존기간", body)
             self.assertNotIn("<b>장비", body)
             o = Client(f"http://127.0.0.1:{srv.server_address[1]}")
@@ -289,4 +298,42 @@ class FormsWebTest(unittest.TestCase):
             self.assertEqual(st, 303)
         finally:
             srv.shutdown()
+            rmtree(d)
+
+
+class BuiltinUpgradeTest(unittest.TestCase):
+    def test_untouched_builtin_gets_new_defaults(self):
+        from gyeoljae.core import App
+        a, d = world()
+        try:
+            old = {k: v for k, v in a.form_get("admin", "official").items()
+                   if k not in ("code", "version", "enabled", "builtin", "layout")}
+            a.form_save("admin", "official", old)  # 옛 기본값(layout 없음) 상태 재현
+            v = a.form_get("admin", "official")["version"]
+            b = App(d)
+            n = b.form_get("admin", "official")
+            self.assertEqual((n["version"], n.get("layout")), (v + 1, "gov"))
+            mine = dict(old, name="우리 공문")
+            b.form_save("admin", "official", mine)  # 관리자가 고친 양식은 그대로
+            self.assertEqual(App(d).form_get("admin", "official")["name"], "우리 공문")
+        finally:
+            rmtree(d)
+
+
+class LenientAmountTest(unittest.TestCase):
+    def test_unreadable_amount_means_full_line(self):
+        a, d = world()
+        try:
+            a.emp_add("admin", "개발팀장", "DEV", "팀장", username="devtl")
+            a.emp_add("admin", "사장", "MGT", "대표", username="boss")
+            a.policy_set("admin", "DEV", EXPENSE)
+            m = a.create_draft("dev1", "x", "", form="expense", submit=True,
+                               fields={"items": [{"item": "서버", "qty": "한대", "price": "50만", "amount": "1"}]})
+            self.assertIsNone(m["amount"])
+            self.assertFalse(any(s["final"] for s in m["line"]))  # 금액 미상 → 전결 없음, 전체 결재선
+            m2 = a.create_draft("dev1", "y", "", form="expense", submit=True,
+                                fields={"items": [{"item": "서버", "qty": 1, "price": "50만"},
+                                                  {"item": "?", "qty": "", "price": "9억"}]})
+            self.assertIsNone(m2["amount"])  # 한 행이라도 못 읽으면 합계 미상
+        finally:
             rmtree(d)

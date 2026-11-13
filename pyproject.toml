@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gyeoljae"
-version = "0.1.1"
+version = "0.2.0"
 description = "Korean-style e-approval (전자결재) system — approval lines, 전결/대결, forms, mail, files. Python stdlib, Windows/Linux/macOS."
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,3 +23,6 @@ gyeol = "gyeoljae.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+gyeoljae = ["static/*", "vendor/hanword/*", "vendor/hanword/**/*"]

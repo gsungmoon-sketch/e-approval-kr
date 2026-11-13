@@ -1,0 +1,2 @@
+hwpx_skeleton.hwpx — 빈 HWPX 문서 골격(한컴오피스 저장본). python-hwpx 배포물(hwpx/data/Skeleton.hwpx)에서 복사.
+python-hwpx: Apache License 2.0 (https://pypi.org/project/python-hwpx/). hwpx_std.py가 이 골격에 본문·속성을 덧붙여 HWPX를 만든다.

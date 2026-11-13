@@ -13,9 +13,9 @@
 <h2>2. The screen</h2>
 <table><tr><th>Menu</th><th>Contents</th></tr>
 <tr><td><b>Home (홈)</b></td><td>Notices, counts of waiting / in-progress / completed / rejected documents, new messages.</td></tr>
-<tr><td><b>Approval (결재)</b></td><td>Waiting for me (결재대기) / In progress (결재진행) / Completed (결재완료) / Rejected (반려) / CC and read (참조·열람) / My drafts and saved drafts (기안함·임시저장) / Department box (부서문서함) / Write a draft (기안하기)</td></tr>
+<tr><td><b>Approval (결재)</b></td><td>Waiting for me (결재대기) / In progress (결재진행) / Completed (결재완료) / Rejected (반려) / CC and read (참조·열람) / My drafts and saved drafts (기안함·임시저장) / Write a draft (기안하기) (fixed system boxes)</td></tr>
 <tr><td><b>Communication (소통)</b></td><td>Messages (쪽지) / Mail (메일) / Board (게시판) / Files (자료실)</td></tr>
-<tr><td><b>My storage (내 보관함)</b></td><td>Your own folders for documents and files.</td></tr>
+<tr><td><b>Document boxes (문서함)</b></td><td>Department box by classification (부서 문서함) / Project boxes for open projects (사업 문서함) / My folders, private to you (내 폴더)</td></tr>
 <tr><td><b>Org chart (조직도)</b></td><td>Find departments and colleagues.</td></tr>
 <tr><td><b>Settings (설정)</b></td><td>Change password (비밀번호 변경), delegation settings (대결 설정), my approval line preview (내 결재선 미리보기)</td></tr>
 <tr><td><b>Admin (관리)</b></td><td>Visible to administrators only.</td></tr></table>
@@ -25,10 +25,10 @@
 <li><b>Choose a form.</b> Built in: general proposal (일반기안(품의)), work report (업무보고), expense report (지출결의서), purchase request (구매요청서), business trip request (출장신청서), trip expense settlement (출장비정산서), expense settlement (경비정산서), leave request (휴가신청서), cooperation memo (협조전), official letter (공문). Favorites and recently used forms appear first. Your company may have added more.</li>
 <li><b>Check the approval line (step 2).</b> If your department has approval rules, the approvers are chosen automatically and shown in the <b>approval line preview</b> on the right (below on a phone). The "Approvers" box then takes only <b>extra approvers</b>, as IDs (only if the rules allow it). A department without rules: type approver IDs in order separated by commas and put <b><code>!</code> after the final-approval person at the very end</b> (e.g. <code>devlead,ceo!</code>). The "CC" box takes IDs of people to copy. A large amount may change the steps; if you change the form or amount, save as draft and the preview is recalculated.</li>
 <li><b>Fill in the form and body (step 3).</b> Each form has different fields. Fields marked as required must be filled.
-<ul><li><b>Amount and number:</b> type digits only. In a <b>table</b> such as expense items, quantity x unit price and the total are calculated for you.</li>
+<ul><li><b>Amount and number:</b> type digits only. In a <b>table</b> such as expense items, type the amounts and the total yourself (nothing is calculated).</li>
 <li><b>Period (date range):</b> for leave, the number of working days is calculated without weekends; a half day counts as 0.5.</li>
 <li><b>Choice:</b> pick from the list.</li></ul>
-The server recalculates amounts and uses them for the approval line (final-approval limits), so its result is the one that counts.</li>
+Values are kept as typed; the server does not calculate or check them. Amount-limit final approval does not apply to form documents; the approvers check the amount.</li>
 <li><b>Attach files (step 4)</b> such as receipts, quotes, hwpx / docx / pdf. Up to 10 MB per file and 30 MB in total. If a form requires proof and you attach nothing, you cannot submit.</li>
 <li><b>Save as draft (임시저장)</b> to continue later. Reopen it from <b>Approval → My drafts and saved drafts (기안함·임시저장)</b>.</li>
 <li><b>Submit (상신)</b> when done. The document goes to the first approver. After submitting you cannot edit it; withdraw it first. Tick "Allow department members to read after completion" if same-department staff should see the finished document.</li></ol>
@@ -57,7 +57,22 @@ Being an administrator does not give access to other people's documents. A docum
 <li><b>Mail (메일):</b> this is <b>internal mail</b>. In the To / CC / BCC boxes you can use IDs and <code>@departmentcode</code> separated by commas (<code>@전체</code>, everyone, only for administrators and department heads). Attachments, reply, forward and a trash folder are available; folders are Inbox, Sent, Drafts and Trash. It is not an internet mail service; mail to outside addresses works only if the administrator has switched that on.</li>
 <li><b>Board (게시판):</b> notices and a free board. Notices are written by administrators and department heads; an administrator can pin them to the top of Home.</li>
 <li><b>Files (자료실):</b> share files company-wide or by department. Uploading the same name again keeps earlier versions.</li>
-<li><b>My storage (내 보관함):</b> a private folder only you can see.</li></ul>
+<li><b>My folders (내 폴더):</b> private folders only you can see.</li></ul>
+<h2 id="filing">6-1. Classifying and filing documents (문서함)</h2>
+<p>Documents are never <b>moved</b>; they get <b>tags</b>. The fixed system boxes (waiting, drafts, …) stay as they are. Tags show as chips under <b>분류·보관</b> on the right of a document.</p>
+<ul><li><b>Department classification (부서 분류):</b> each department has a classification tree (default 회계 accounting, 인사 HR, 비품 supplies, 일반 general). Pick it in <b>⑤ 분류·보관</b> when drafting; each form has a default (expense/claims → 회계, leave/trips → 인사, purchase → 비품, others → 일반). <b>문서함 → 부서 문서함</b> filters by classification. Department heads and administrators add, rename and delete entries under <b>분류 관리</b>.</li>
+<li><b>Project boxes (사업 문서함):</b> groups of documents for a project that can span departments. Department heads and administrators create them (name, optional code, participating departments and people, open/closed); the creator and administrators manage them. When drafting you can tag open projects you take part in.</li>
+<li><b>My folders (내 폴더):</b> private folders. Choose a folder when drafting, or add/remove a document on its page at any time.</li></ul>
+<p><b>Who can change classification and projects:</b> the drafter while the document is a draft (saved, withdrawn or rejected); after submission the department head, a <b>document manager (문서관리 담당)</b> appointed by an administrator, and administrators. Every change is written to the audit log as before → after.</p>
+<div class="note"><b>Tags never widen access</b>Project and department boxes list only documents you could already open. Joining a project does not let other departments see your private documents.</div>
+<h2 id="redraft">6-2. Draft from this document (이 문서로 기안)</h2>
+<p>On any document you can view, <b>이 문서로 기안</b> opens a <b>new draft</b> filled from it: title, form values, body, approval line, CC, classification, projects and your folders, all editable.</p>
+<ul><li>The form opens in its <b>current version</b>; only fields with the same name are carried over.</li>
+<li>The approval line is recomputed under the current rules; approvers chosen by hand on the original stay only where the rules allow it.</li>
+<li>Attachments are not copied unless you tick <b>원문 첨부도 가져오기</b> (copies them as new files).</li>
+<li>The new document gets its own number when submitted and shows <b>원문: &lt;original number&gt;</b> on screen and in print.</li>
+<li>It refuses, with the reason, when the original's form is disabled or not allowed for your department, or when the original has no form and free-form drafting is off.</li>
+<li>To fix and resubmit your own withdrawn or rejected document, keep using <b>수정 (edit)</b>.</li></ul>
 <h2>7. Search</h2>
 <p>Type words in the search box at the top. It looks in titles and bodies, and you can narrow by period, drafter, department, status, type and document number. Only documents you may see appear. If you know the document number you can look it up directly.</p>
 <h2>8. Printing</h2>
