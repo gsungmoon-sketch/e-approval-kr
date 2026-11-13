@@ -152,12 +152,20 @@ def add_admin_parsers(sp):
     s.add_argument("--off", action="store_true")
 
 
+def _interactive():
+    """사람이 터미널 앞에 있는가. Windows 는 NUL 장치도 isatty()=True 라 stdout 까지 본다(getpass 무한 대기 방지)."""
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
 def _confirm_password(app, a, args=None):
     pf = getattr(args, "password_file", None)
     if pf:
         pw = (sys.stdin.readline() if pf == "-" else (Path(pf).read_text(encoding="utf-8").splitlines() or [""])[0])
         pw = pw.rstrip("\r\n")
-    elif sys.stdin.isatty():
+    elif _interactive():
         pw = getpass.getpass(f"{a} 비밀번호 확인: ")
     else:
         raise core.Invalid("비밀번호 확인이 필요합니다: 터미널에서 실행하거나 --password-file 을 주세요")

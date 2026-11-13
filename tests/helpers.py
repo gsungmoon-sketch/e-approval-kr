@@ -1,3 +1,4 @@
+import faulthandler
 import os
 import shutil
 import stat
@@ -10,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from gyeoljae.core import App  # noqa: E402
 
 PW = "pass12345"
+# 테스트가 멈추면 5분마다 모든 스레드 스택을 출력(CI 에서 어디서 멈췄는지 보이게)
+faulthandler.dump_traceback_later(300, repeat=True)
 
 
 def rmtree(d):

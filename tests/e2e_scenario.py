@@ -20,7 +20,8 @@ FAILS = []
 
 def g(user, *args, stdin=None, ok=True):
     cmd = [sys.executable, "-m", "gyeoljae", "--json"] + (["-u", user] if user else []) + list(args)
-    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, encoding="utf-8", env=ENV)
+    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, encoding="utf-8", env=ENV, timeout=120,
+                       stdin=None if stdin is not None else subprocess.DEVNULL)
     data = json.loads(p.stdout) if p.stdout.strip() else None
     if ok and p.returncode not in (0,):
         raise SystemExit(f"FAIL {args}: rc={p.returncode} {p.stdout} {p.stderr}")

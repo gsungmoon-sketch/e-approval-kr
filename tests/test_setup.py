@@ -76,10 +76,10 @@ class SetupWizardTest(unittest.TestCase):
         env = {"GYEOLJAE_DATA": self.d, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                "PATH": "/usr/bin:/bin", "SYSTEMROOT": __import__("os").environ.get("SYSTEMROOT", "")}
         r = subprocess.run([sys.executable, "-m", "gyeoljae", "-u", "admin", "setting", "list"], env=env,
-                           capture_output=True, text=True, encoding="utf-8")
+                           capture_output=True, text=True, encoding="utf-8", timeout=60)
         self.assertIn("doc_number: {dept}-{year}-{seq}", r.stdout)
         r = subprocess.run([sys.executable, "-m", "gyeoljae", "-u", "admin", "change", "approve", "1"], env=env,
-                           capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
+                           capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL, timeout=60)
         self.assertIn("--password-file", r.stdout + r.stderr)  # 조용히 stdin 읽지 않음
         a.add_dept("admin", "DEV", "개발")
         a.emp_add("admin", "팀장", "DEV", "부서장", username="lead")
