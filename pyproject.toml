@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gyeoljae"
-version = "0.2.1"
+version = "0.2.2"
 description = "Korean-style e-approval (전자결재) system — approval lines, 전결/대결, forms, mail, files. Python stdlib, Windows/Linux/macOS."
 readme = "README.md"
 license = {text = "MIT"}

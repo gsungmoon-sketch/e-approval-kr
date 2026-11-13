@@ -142,6 +142,19 @@ class EditorWebTest(unittest.TestCase):
         cls.srv.server_close()
         rmtree(cls.d)
 
+    def test_editor_subdir_and_traversal(self):  # 'font/x' 는 OS 와 무관하게 '/' 로 매핑, 우회 경로는 404
+        from test_web import Client
+        c = Client(self.base)
+        c.login("dev1")
+        st, body, _ = c.req("/editor/font/D2Coding-400.woff2")
+        self.assertEqual(st, 200)
+        self.assertGreater(len(body), 1000)
+        for bad in ("/editor/font%5CD2Coding-400.woff2", "/editor/..%2F..%2Fcore.py", "/editor/../core.py",
+                    "/editor/font/..%5C..%5Chanword.py", "/editor/C:%5Cwindows%5Cwin.ini", "/editor/%2e%2e/web.py"):
+            with self.subTest(bad=bad):
+                st, _, _ = c.req(bad)
+                self.assertIn(st, (400, 404))
+
     def test_editor_pages_and_csp(self):
         from test_web import Client
         c = Client(self.base)

@@ -31,6 +31,16 @@ RICH = ('<div id="wpmeta" hidden data-margins="25,15,15,20"><div class="wp-heade
 
 
 class VendorTest(unittest.TestCase):
+    def test_vendor_key_is_posix(self):  # Windows 경로도 VENDOR.md·URL 키는 '/'
+        from pathlib import PurePosixPath, PureWindowsPath
+        base = PureWindowsPath(r"C:\app\gyeoljae\vendor\hanword")
+        self.assertEqual(hanword.vendor_key(base / "licenses" / "fonts" / "Pretendard-OFL.txt", base),
+                         "licenses/fonts/Pretendard-OFL.txt")
+        self.assertEqual(hanword.vendor_key(PureWindowsPath(r"C:\app\gyeoljae\vendor\hanword\font\NotoSansKR.ttf"), base),
+                         "font/NotoSansKR.ttf")
+        pb = PurePosixPath("/opt/x/vendor/hanword")
+        self.assertEqual(hanword.vendor_key(pb / "font" / "D2Coding-400.woff2", pb), "font/D2Coding-400.woff2")
+
     def test_vendor_md_hashes(self):
         md = (hanword.VENDOR / "VENDOR.md").read_text(encoding="utf-8")
         self.assertRegex(md, r"commit `[0-9a-f]{40}`")
@@ -40,7 +50,7 @@ class VendorTest(unittest.TestCase):
         for h, f in rows:
             with self.subTest(f=f):
                 self.assertEqual(hashlib.sha256((hanword.VENDOR / f).read_bytes()).hexdigest(), h)
-        actual = {str(p.relative_to(hanword.VENDOR)) for p in hanword.VENDOR.rglob("*")
+        actual = {hanword.vendor_key(p) for p in hanword.VENDOR.rglob("*")
                   if p.is_file() and "__pycache__" not in p.parts and p.name != "VENDOR.md"}
         self.assertEqual(actual, listed)  # 목록 밖 파일 없음
         for bad in ("server.py", "debug.js", "guide.html", "CLAUDE.md", "wp-public.js"):

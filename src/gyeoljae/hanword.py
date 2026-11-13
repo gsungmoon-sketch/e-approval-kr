@@ -8,11 +8,16 @@ from __future__ import annotations
 import functools
 import json
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 
 VENDOR = Path(__file__).resolve().parent / "vendor" / "hanword"
 GOV = "gov"  # 공문서 A4: 위30·왼20·오15·아래15 mm (우리 출력 용지와 같음)
 MAX_PAGE_JSON = 1000
+
+
+def vendor_key(path: PurePath, base: PurePath = VENDOR) -> str:
+    """반입 파일 경로 → VENDOR.md·URL 에 쓰는 키('font/x.woff2'). OS 구분자(Windows '\\')와 무관하게 '/'."""
+    return path.relative_to(base).as_posix()
 
 
 def available() -> bool:
