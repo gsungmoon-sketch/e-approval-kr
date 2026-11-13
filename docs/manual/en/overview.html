@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overview and terms - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/overview.html">한국어</a></div></nav>
+<div class="wrap"><h1>1. Overview and terms</h1>
+<p><b>e-approval-kr</b> (Python package <code>gyeoljae</code>, CLI command <code>gyeol</code>) is a Korean-style electronic approval (전자결재) web server. A small organization installs it on one office computer and staff draft and approve documents in a web browser. It uses only the Python standard library and behaves the same on Windows, macOS and Linux.</p>
+<h2>Main features</h2>
+<ul><li>Employees, departments, positions, employee numbers, CSV bulk import, org chart</li>
+<li>Draft, approval line, body, attachments, submit; approve, reject, withdraw, delegate, final approval, CC</li>
+<li>Per-department approval rules (line template, amount-based final-approval limits, required CC, delegation rules), versioned</li>
+<li>10 built-in forms and an administrator form editor (tables, automatic calculation, periods, required attachments)</li>
+<li>Document boxes and search; internal mail, messages, board, file library; optional outgoing SMTP notifications</li>
+<li>Hash-chained audit log with tamper check, optional two-person approval, daily automatic backup</li></ul>
+<h2>Architecture</h2>
+<pre>
+  직원 PC / staff PCs            서버 컴퓨터 / server computer
+ +----------------+  HTTP(S)   +-------------------------------+
+ | 웹 브라우저     | ---------> | e-approval-kr (port 8130)     |
+ | web browser    |            |   web UI + CLI (same code)    |
+ +----------------+            |   data folder:                |
+   (설치 불필요)                |     gyeoljae.db  (SQLite)     |
+   (nothing to install)        |     docs/ (본문·첨부 / bodies) |
+                               |     audit.log, server.json    |
+                               +-------------------------------+
+</pre>
+<p>The web UI and the CLI are two faces of the same functions. The CLI (supports <code>--json</code>) is an <b>operator tool</b> on the server computer, for automation and recovery. One computer is meant to handle tens to a few hundred users and a few thousand approvals per day (writes are processed one at a time).</p>
+<h2>Life of a document</h2>
+<pre>
+ 기안중 --상신--> 진행 --승인(마지막)--> 완료 (문서번호 부여)
+ draft   submit   in progress  approve(last)  done (number issued)
+   ^               |  |
+   |  수정 후 상신  |  +--반려 reject--> 반려 rejected --(수정·상신)--+
+   +---------------+                                                 |
+   +--회수 withdraw (아무도 결재 전 / before anyone approved)---------+
+</pre>
+<h2>Who can see what</h2>
+<p>A document can be seen by the drafter, (after submission) the approval line, delegates and CC recipients, and department-head-level staff of the drafting department (same-department staff too for completed documents if the drafter allows). <b>Administrators cannot read other people's document bodies</b>; they manage staff, rules and audit.</p>
+<h2>How to read this manual</h2>
+<table><tr><th>You are...</th><th>Read chapters</th></tr>
+<tr><td>the installer</td><td>2, 3, 6, 7</td></tr><tr><td>a company administrator</td><td>3, 4, 6, 7, 9</td></tr><tr><td>regular staff</td><td>5</td></tr></table>
+<p>Green <b>For administrators</b> boxes are for administrators who use commands; people who only use the web screens can skip them.</p>
+<h2 id="terms">Terminology (Korean - English)</h2>
+<table><tr><th>Korean</th><th>English</th><th>Meaning</th></tr><tr><td><b>결재</b></td><td>approve / approval</td><td>Reviewing and approving a document; the people on the approval line do it in turn.</td></tr><tr><td><b>기안</b></td><td>draft (write a document)</td><td>Writing a document, or the document itself. 기안자 = drafter.</td></tr><tr><td><b>상신</b></td><td>submit</td><td>Putting the finished draft onto its approval line. It cannot be edited afterwards.</td></tr><tr><td><b>반려</b></td><td>reject</td><td>An approver returns the document to the drafter with a reason (at least 5 characters).</td></tr><tr><td><b>회수</b></td><td>withdraw</td><td>The drafter takes a submitted document back; only possible while nobody has approved yet.</td></tr><tr><td><b>대결</b></td><td>delegate approval (approve on behalf)</td><td>Someone designated approves in place of an absent approver; recorded as 대결 on the document.</td></tr><tr><td><b>전결</b></td><td>final approval authority</td><td>If the amount is within a position's limit, that position is the final approver and higher steps are skipped.</td></tr><tr><td><b>참조</b></td><td>cc (copy)</td><td>Designated read-only viewers; no approval right.</td></tr><tr><td><b>결재선</b></td><td>approval line</td><td>The ordered list of approvers a document passes through.</td></tr><tr><td><b>결재규정</b></td><td>approval rules (policy)</td><td>Per department and document type: approval line template, final-approval limits, required CC, delegation rules.</td></tr><tr><td><b>결재란</b></td><td>approval box</td><td>The stamp-box table at the top of a document: position, name, status, date.</td></tr><tr><td><b>양식(서식)</b></td><td>form (template)</td><td>The template of a draft: fields, approval type, retention period. Versioned.</td></tr><tr><td><b>문서번호</b></td><td>document number</td><td>Number issued at final approval (no gaps).</td></tr><tr><td><b>사번</b></td><td>employee number</td><td>Hire date YYMMDD + serial (e.g. 26111301). Default sign-in ID.</td></tr><tr><td><b>직위·서열</b></td><td>position / rank</td><td>Job title and its rank, used for approval lines, final approval and delegation.</td></tr><tr><td><b>부서장급</b></td><td>department-head-level</td><td>A position marked department-head level; may read department documents and write notices.</td></tr><tr><td><b>2인 승인</b></td><td>two-person approval</td><td>Safeguard that requires a second administrator to approve important admin changes.</td></tr><tr><td><b>감사로그</b></td><td>audit log</td><td>Hash-chained record of every state change; tamper-checkable.</td></tr><tr><td><b>머리값</b></td><td>audit head</td><td>Latest sequence number and hash of the audit chain; stored elsewhere it also exposes a rewritten chain.</td></tr><tr><td><b>쪽지</b></td><td>message (short note)</td><td>Short internal message; approval notifications arrive as messages.</td></tr><tr><td><b>자료실</b></td><td>file library</td><td>Company or department file sharing (same name = new version).</td></tr><tr><td><b>내 보관함</b></td><td>my storage</td><td>Private folders for collecting documents and files.</td></tr></table>
+<p>"참조" is <b>cc</b>. Do not confuse 대결 (someone approves in your place) with 전결 (final approval within a limit).</p><div class="pn"><span></span><a href="install.html">Next: 2. Installation &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

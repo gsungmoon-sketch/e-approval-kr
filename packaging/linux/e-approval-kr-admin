@@ -1,0 +1,22 @@
+#!/bin/sh
+# e-approval-kr-admin: run the e-approval-kr CLI as the service user against the service data
+# directory, so files it creates stay owned by the service (never run the CLI as root on the
+# data directory). Examples:
+#   sudo e-approval-kr-admin setup                         # first administrator (interactive)
+#   printf '%s\n' "$PW" | sudo e-approval-kr-admin setup --admin-id admin --password-file -
+#   sudo e-approval-kr-admin backup /var/lib/e-approval-kr/backup-$(date +%F).zip
+#   sudo e-approval-kr-admin -u admin menu
+set -eu
+PREFIX=/opt/e-approval-kr
+DATA=/var/lib/e-approval-kr
+SVC_USER=e-approval-kr
+BIN="$PREFIX/e-approval-kr"
+
+cd /
+if [ "$(id -u)" -ne 0 ]; then
+    exec sudo -- "$0" "$@"
+fi
+if command -v runuser >/dev/null 2>&1; then
+    exec runuser -u "$SVC_USER" -- env GYEOLJAE_DATA="$DATA" "$BIN" "$@"
+fi
+exec sudo -u "$SVC_USER" -- env GYEOLJAE_DATA="$DATA" "$BIN" "$@"

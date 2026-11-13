@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보안 권장 사항 - e-approval-kr 전자결재 설명서</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>목차</b></a><a href="../index.html">언어 선택</a><span class="sp"></span><a href="../en/security.html">English</a></div></nav>
+<div class="wrap"><h1>보안 권장 사항</h1>
+
+<p>결재 문서에는 회사의 중요한 정보가 있습니다. 다음 사항을 지켜 주세요.</p>
+<ol>
+<li><b>기본은 이 컴퓨터만 접속(127.0.0.1).</b> 직원이 함께 쓸 때만 사내망(LAN)으로 열고, 인터넷에 직접 여는 것(공유기 포트포워딩)은 피하세요.</li>
+<li><b>LAN·외부 공개 시 HTTPS 프록시.</b> 일반 HTTP는 같은 네트워크에서 엿볼 수 있습니다. <a href="first-setup.html#https">HTTPS 설정</a>을 보세요. 프록시 뒤에서는 <code>GYEOLJAE_TRUST_PROXY=1</code>과 <code>GYEOLJAE_COOKIE_SECURE=1</code>을 켭니다(프록시 없이 켜면 안 됩니다).</li>
+<li><b>방화벽은 사내망만 허용.</b> <a href="troubleshooting.html#fw">방화벽</a></li>
+<li><b>데모 데이터 금지.</b> 시험용 <code>seed-demo</code>의 계정은 공개된 비밀번호를 씁니다. 실제 운영 데이터에 쓰지 마세요.</li>
+<li><b>관리자 2명 이상 + 2인 승인 켜기.</b> <a href="admin.html#two">2인 승인</a></li>
+<li><b>백업을 다른 장소에, 암호화해서 보관.</b> 백업 zip에는 문서 원문과 개인정보가 들어 있습니다. <a href="backup.html">백업·복구</a></li>
+<li><b>SMTP 비밀번호</b>는 데이터 폴더의 <code>smtp.json</code>에 저장됩니다. 데이터 폴더와 백업에 접근할 수 있는 사람을 서버 관리자로 제한하세요. 앱 비밀번호처럼 권한이 작은 계정을 쓰세요.</li>
+<li><b>데이터 폴더 권한.</b> 서버 서비스 계정과 관리자만 읽을 수 있게 하세요. 데이터 폴더에 접근할 수 있는 사람은 CLI로 모든 관리 작업을 할 수 있다고 봐야 합니다.</li>
+<li><b>정기 검증.</b> 월 1회 <code>verify-audit</code> 실행, <code>export-audit-head</code> 값을 다른 곳에 보관. <a href="backup.html#head">머리값</a></li>
+<li><b>퇴사자 즉시 처리.</b> 퇴사 처리하면 로그인이 막히고 기록은 남습니다.</li>
+<li><b>버전 업데이트.</b> 보안 수정이 포함될 수 있으니 새 버전이 나오면 <a href="backup.html#upgrade">업그레이드</a>하세요.</li></ol>
+<h2>기본 보호 장치</h2>
+<ul><li>로그인 실패 제한(계정 10분에 5회, IP 10분에 20회).</li>
+<li>세션 쿠키는 HttpOnly·SameSite=Strict(HTTPS에서는 Secure). 모든 변경 요청에 CSRF 검사.</li>
+<li>첨부는 허용된 확장자·크기만, 저장 이름은 번호로만.</li>
+<li>권한 없는 문서는 "존재하지 않음"으로 응답.</li></ul>
+<p>취약점을 발견하면 공개 이슈 대신 GitHub의 비공개 보안 신고(Security Advisories)로 알려 주세요: <code>https://github.com/gsungmoon-sketch/e-approval-kr/security/advisories/new</code></p>
+
+<div class="pn"><a href="backup.html">&larr; 이전: 6. 백업·복구·업그레이드</a><a href="troubleshooting.html">다음: 8. 문제 해결·FAQ &rarr;</a></div><footer>e-approval-kr (결재) 설명서 · MIT 라이선스 · 화면 이름은 버전에 따라 조금 다를 수 있습니다.</footer></div></body></html>

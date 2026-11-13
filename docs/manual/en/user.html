@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>User guide - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/user.html">한국어</a></div></nav>
+<div class="wrap"><h1>User guide</h1>
+
+<p>This chapter is for regular staff. Names of screens are shown in <b>bold</b>, with the Korean label you will see on screen in parentheses.</p>
+<h2>1. Signing in and your password</h2>
+<ol><li>Type the address your administrator gave you (for example <code>http://server-address:8130</code>) in your browser.</li>
+<li>Sign in with your ID (by default your employee number) and the temporary password.</li>
+<li>On first sign-in you must choose a <b>new password</b> before you can use anything else.</li>
+<li>Change it any time under <b>Settings (설정) → Change password (비밀번호 변경)</b> (8 characters or more). Five wrong attempts for one ID within 10 minutes block sign-in for 10 minutes. A session expires after 8 hours; just sign in again.</li></ol>
+<h2>2. The screen</h2>
+<table><tr><th>Menu</th><th>Contents</th></tr>
+<tr><td><b>Home (홈)</b></td><td>Notices, counts of waiting / in-progress / completed / rejected documents, new messages.</td></tr>
+<tr><td><b>Approval (결재)</b></td><td>Waiting for me (결재대기) / In progress (결재진행) / Completed (결재완료) / Rejected (반려) / CC and read (참조·열람) / My drafts and saved drafts (기안함·임시저장) / Department box (부서문서함) / Write a draft (기안하기)</td></tr>
+<tr><td><b>Communication (소통)</b></td><td>Messages (쪽지) / Mail (메일) / Board (게시판) / Files (자료실)</td></tr>
+<tr><td><b>My storage (내 보관함)</b></td><td>Your own folders for documents and files.</td></tr>
+<tr><td><b>Org chart (조직도)</b></td><td>Find departments and colleagues.</td></tr>
+<tr><td><b>Settings (설정)</b></td><td>Change password (비밀번호 변경), delegation settings (대결 설정), my approval line preview (내 결재선 미리보기)</td></tr>
+<tr><td><b>Admin (관리)</b></td><td>Visible to administrators only.</td></tr></table>
+<h2 id="draft">3. Writing a draft (sending a document for approval)</h2>
+<ol>
+<li>Click <b>Approval → Write a draft (기안하기)</b>.</li>
+<li><b>Choose a form.</b> Built in: general proposal (일반기안(품의)), work report (업무보고), expense report (지출결의서), purchase request (구매요청서), business trip request (출장신청서), trip expense settlement (출장비정산서), expense settlement (경비정산서), leave request (휴가신청서), cooperation memo (협조전), official letter (공문). Favorites and recently used forms appear first. Your company may have added more.</li>
+<li><b>Check the approval line (step 2).</b> If your department has approval rules, the approvers are chosen automatically and shown in the <b>approval line preview</b> on the right (below on a phone). The "Approvers" box then takes only <b>extra approvers</b>, as IDs (only if the rules allow it). A department without rules: type approver IDs in order separated by commas and put <b><code>!</code> after the final-approval person at the very end</b> (e.g. <code>devlead,ceo!</code>). The "CC" box takes IDs of people to copy. A large amount may change the steps; if you change the form or amount, save as draft and the preview is recalculated.</li>
+<li><b>Fill in the form and body (step 3).</b> Each form has different fields. Fields marked as required must be filled.
+<ul><li><b>Amount and number:</b> type digits only. In a <b>table</b> such as expense items, quantity x unit price and the total are calculated for you.</li>
+<li><b>Period (date range):</b> for leave, the number of working days is calculated without weekends; a half day counts as 0.5.</li>
+<li><b>Choice:</b> pick from the list.</li></ul>
+The server recalculates amounts and uses them for the approval line (final-approval limits), so its result is the one that counts.</li>
+<li><b>Attach files (step 4)</b> such as receipts, quotes, hwpx / docx / pdf. Up to 10 MB per file and 30 MB in total. If a form requires proof and you attach nothing, you cannot submit.</li>
+<li><b>Save as draft (임시저장)</b> to continue later. Reopen it from <b>Approval → My drafts and saved drafts (기안함·임시저장)</b>.</li>
+<li><b>Submit (상신)</b> when done. The document goes to the first approver. After submitting you cannot edit it; withdraw it first. Tick "Allow department members to read after completion" if same-department staff should see the finished document.</li></ol>
+<div class="note"><b>Form versions</b>A document keeps the form and approval rules that applied when you wrote it, until it is finished. If an administrator changes the rules in the meantime, documents already submitted are not affected.</div>
+<h2>4. Approving</h2>
+<ol><li>Open <b>Approval → Waiting for me (결재대기)</b>. Documents waiting for your decision are listed (the count also shows on Home).</li>
+<li>Open the document and read the content and attachments.</li>
+<li>Type a comment in the <b>comment</b> box at the bottom and press <b>Approve (결재)</b>, <b>Final approval (전결)</b> or <b>Reject (반려)</b>. A <b>confirmation screen</b> follows and the action happens only when you confirm there (it cannot be undone, so re-check). If the drafter edited the document in the meantime the action is refused with a "changed" message; reopen the document.</li><li><b>Approve (결재)</b>: when the last person approves, the document is completed and receives a <b>document number</b>. The <b>전결</b> button appears only if you hold final-approval authority; it skips the higher steps and completes the document.</li>
+<li><b>Reject (반려)</b>: you must write a reason of <b>at least 5 characters</b>. The document returns to the drafter, who can fix it under <b>Approval → Rejected (반려)</b> and submit again.</li>
+<li><b>Withdraw (회수)</b> (drafter): the <b>회수</b> button on the document page. It works <b>only while nobody has approved yet</b> (not after the first approver has acted). Then <b>edit</b> and submit again.</li></ol>
+<h3>Final-approval limits (전결)</h3>
+<p>If your department's rules say, for example, "the department head can finally approve up to 1,000,000 won", then when the amount is at or below that limit, that person's final approval completes the document and higher steps are skipped. Example: a 900,000-won expense report approved by the department head is completed without the CEO and gets its number. Look for the "전결권" mark in the approval line preview.</p>
+<h3>Delegation (대결)</h3>
+<p>When you are away, you can let someone else approve for you.</p>
+<ol><li>Open <b>Settings → Delegation (대결 설정)</b> (on a phone: <b>More → 대결자 지정</b>).</li><li>Enter the delegate's ID, start date and end date, and press <b>위임</b> (delegate). Company rules may limit this (same department only, minimum position, maximum number of days).</li>
+<li>When the delegate approves, the document records "대결" (approved on behalf), so it is clear who acted. When the period ends or you cancel, everything returns to normal.</li></ol>
+<h3>My approval line preview (내 결재선 미리보기)</h3>
+<p>Under <b>Settings → My approval line preview</b> enter a document type (general / expense / leave) and an amount to see who would approve if you submitted such a document. It is a look-up screen, not a saved setting.</p>
+<h2>5. CC and viewing</h2>
+<p>Documents on which you are copied appear under <b>Approval → CC and read (참조·열람)</b>. You can read them but not approve. Opening a document records that you read it.
+A document can be seen by the drafter, the people in the approval line, delegates, CC recipients and department-head-level staff of the drafting department (same-department staff can also see completed documents if the drafter allowed it).
+Being an administrator does not give access to other people's documents. A document you may not see is shown as "does not exist".</p>
+<h2>6. Messages, mail, board, files</h2>
+<ul>
+<li><b>Messages (쪽지):</b> short notes. You also get one when an approval arrives or a document is rejected.</li>
+<li><b>Mail (메일):</b> this is <b>internal mail</b>. In the To / CC / BCC boxes you can use IDs and <code>@departmentcode</code> separated by commas (<code>@전체</code>, everyone, only for administrators and department heads). Attachments, reply, forward and a trash folder are available; folders are Inbox, Sent, Drafts and Trash. It is not an internet mail service; mail to outside addresses works only if the administrator has switched that on.</li>
+<li><b>Board (게시판):</b> notices and a free board. Notices are written by administrators and department heads; an administrator can pin them to the top of Home.</li>
+<li><b>Files (자료실):</b> share files company-wide or by department. Uploading the same name again keeps earlier versions.</li>
+<li><b>My storage (내 보관함):</b> a private folder only you can see.</li></ul>
+<h2>7. Search</h2>
+<p>Type words in the search box at the top. It looks in titles and bodies, and you can narrow by period, drafter, department, status, type and document number. Only documents you may see appear. If you know the document number you can look it up directly.</p>
+<h2>8. Printing</h2>
+<p>Press <b>🖨 Print (인쇄)</b> at the top of a document to open a clean print view in a new tab, then use your browser's print (<kbd>Ctrl</kbd>+<kbd>P</kbd>, on Mac <kbd>&#8984;</kbd>+<kbd>P</kbd>). Printing the document page directly also works: menus and buttons are left out and the body and approval box are laid out for A4. To make a PDF, choose "Save as PDF" as the printer.</p>
+<h2>Frequently asked questions</h2>
+<ul><li><b>I want to change a document I submitted.</b> Use <b>Withdraw</b>, edit it and submit again. If the first approver has already approved you can no longer withdraw; ask an approver to reject it.</li>
+<li><b>No one appears in the approval line.</b> If no one holds a required position, ask your administrator.</li>
+<li><b>I forgot my password.</b> Ask your administrator to reissue a temporary password.</li></ul>
+
+<div class="pn"><a href="admin.html">&larr; Previous: 4. Administrator guide</a><a href="backup.html">Next: 6. Backup, restore, upgrade &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

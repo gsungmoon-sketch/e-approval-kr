@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>소개·용어 - e-approval-kr 전자결재 설명서</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>목차</b></a><a href="../index.html">언어 선택</a><span class="sp"></span><a href="../en/overview.html">English</a></div></nav>
+<div class="wrap"><h1>1. 소개·용어</h1>
+<p><b>e-approval-kr</b>(패키지 이름 gyeoljae, CLI 명령 <code>gyeol</code>)은 한국식 전자결재 웹 서버입니다. 작은 조직이 사무실 PC 한 대에 설치해 직원들이 브라우저로 기안·결재하게 하는 용도입니다. 외부 패키지 없이 파이썬 표준 라이브러리만 쓰며 Windows·macOS·Linux에서 같은 방식으로 동작합니다.</p>
+<h2>주요 기능</h2>
+<ul><li>사원·부서·직위·사번 관리, CSV 일괄 등록, 조직도</li>
+<li>기안 → 결재선 → 본문 → 첨부 → 상신, 결재·반려·회수·대결·전결, 참조</li>
+<li>부서별 결재규정(결재선 템플릿, 금액별 전결 한도, 필수 참조, 대결 규칙)과 버전 관리</li>
+<li>양식 10종 기본 제공과 관리자 양식 편집(표·자동 계산·기간·첨부 필수)</li>
+<li>문서함·검색, 사내 메일·쪽지·게시판·자료실, 외부 SMTP 알림(선택)</li>
+<li>해시 체인 감사로그와 변조 검증, 2인 승인(선택), 일일 자동 백업</li></ul>
+<h2>구조</h2>
+<pre>
+  직원 PC / staff PCs            서버 컴퓨터 / server computer
+ +----------------+  HTTP(S)   +-------------------------------+
+ | 웹 브라우저     | ---------> | e-approval-kr (port 8130)     |
+ | web browser    |            |   web UI + CLI (same code)    |
+ +----------------+            |   data folder:                |
+   (설치 불필요)                |     gyeoljae.db  (SQLite)     |
+   (nothing to install)        |     docs/ (본문·첨부 / bodies) |
+                               |     audit.log, server.json    |
+                               +-------------------------------+
+</pre>
+<p>웹 화면과 CLI는 같은 기능을 부르는 두 얼굴입니다. CLI(<code>--json</code> 지원)는 서버 컴퓨터의 <b>운영자 도구</b>로, 자동화와 복구에 씁니다. 규모는 수십~수백 명, 하루 수천 건 결재까지를 한 대로 감당하는 것이 목표입니다(쓰기는 한 번에 하나씩 처리).</p>
+<h2>문서의 한살이</h2>
+<pre>
+ 기안중 --상신--> 진행 --승인(마지막)--> 완료 (문서번호 부여)
+ draft   submit   in progress  approve(last)  done (number issued)
+   ^               |  |
+   |  수정 후 상신  |  +--반려 reject--> 반려 rejected --(수정·상신)--+
+   +---------------+                                                 |
+   +--회수 withdraw (아무도 결재 전 / before anyone approved)---------+
+</pre>
+<h2>누가 무엇을 볼 수 있나</h2>
+<p>문서는 기안자, (상신 뒤) 결재선·대결자·참조자, 기안 부서의 부서장급이 볼 수 있습니다(기안자가 허용하면 완료 문서는 같은 부서원도). <b>관리자는 남의 문서 본문을 볼 수 없고</b> 사원·규정·감사만 관리합니다.</p>
+<h2>이 설명서 읽는 순서</h2>
+<table><tr><th>당신은…</th><th>읽을 장</th></tr>
+<tr><td>설치하는 사람</td><td>2 → 3 → 6 → 7</td></tr><tr><td>회사 관리자</td><td>3 → 4 → 6 → 7 → 9</td></tr><tr><td>일반 직원</td><td>5</td></tr></table>
+<p>초록색 <b>관리자용</b> 상자는 명령어를 쓰는 관리자를 위한 것이며 웹 화면만 쓰는 분은 건너뛰어도 됩니다.</p>
+<h2 id="terms">용어표 (한국어 - English)</h2>
+<table><tr><th>한국어</th><th>English</th><th>뜻</th></tr><tr><td><b>결재</b></td><td>approve / approval</td><td>문서를 검토하고 승인하는 일. 결재선의 사람이 차례로 합니다.</td></tr><tr><td><b>기안</b></td><td>draft (write a document)</td><td>문서를 작성하는 일, 또는 그 문서. 기안자 = drafter.</td></tr><tr><td><b>상신</b></td><td>submit</td><td>작성한 기안을 결재선에 올리는 일. 상신 뒤에는 고칠 수 없습니다.</td></tr><tr><td><b>반려</b></td><td>reject</td><td>결재자가 사유를 적어 기안자에게 돌려보내는 일(사유 5자 이상).</td></tr><tr><td><b>회수</b></td><td>withdraw</td><td>기안자가 올린 문서를 되가져오는 일. 아무도 결재하지 않았을 때만 가능.</td></tr><tr><td><b>대결</b></td><td>delegate approval (approve on behalf)</td><td>자리를 비운 결재자 대신 지정된 사람이 결재하는 일. 문서에 '대결'로 기록.</td></tr><tr><td><b>전결</b></td><td>final approval authority</td><td>금액이 한도 이하이면 그 직위가 최종 결재권자가 되어 위 단계를 건너뛰는 제도.</td></tr><tr><td><b>참조</b></td><td>cc (copy)</td><td>읽기만 하는 지정 열람자. 결재 권한은 없음.</td></tr><tr><td><b>결재선</b></td><td>approval line</td><td>문서가 거치는 결재자의 순서.</td></tr><tr><td><b>결재규정</b></td><td>approval rules (policy)</td><td>부서·문서 종류별 결재선 템플릿, 전결 한도, 필수 참조, 대결 규칙.</td></tr><tr><td><b>결재란</b></td><td>approval box</td><td>문서 상단의 직위·이름·상태·날짜를 담은 도장 칸 표.</td></tr><tr><td><b>양식(서식)</b></td><td>form (template)</td><td>기안의 틀. 입력 항목과 결재 종류, 보존기간 등을 정의. 버전 관리.</td></tr><tr><td><b>문서번호</b></td><td>document number</td><td>최종 승인 때 부여되는 번호(결번 없음).</td></tr><tr><td><b>사번</b></td><td>employee number</td><td>입사일 YYMMDD + 일련번호(예 26111301). 로그인 아이디 기본값.</td></tr><tr><td><b>직위·서열</b></td><td>position / rank</td><td>결재선·전결·대결 판단에 쓰이는 직급과 높낮이.</td></tr><tr><td><b>부서장급</b></td><td>department-head-level</td><td>부서장 이상으로 표시된 직위. 부서 문서 열람·공지 작성 권한.</td></tr><tr><td><b>2인 승인</b></td><td>two-person approval</td><td>중요한 관리 변경에 다른 관리자의 승인을 요구하는 안전장치.</td></tr><tr><td><b>감사로그</b></td><td>audit log</td><td>모든 상태 변경을 기록한 해시 체인. 변조 검증 가능.</td></tr><tr><td><b>머리값</b></td><td>audit head</td><td>감사 체인의 최신 번호와 해시. 외부에 보관하면 체인 재작성도 탐지.</td></tr><tr><td><b>쪽지</b></td><td>message (short note)</td><td>짧은 사내 메시지. 결재 알림도 쪽지로 옴.</td></tr><tr><td><b>자료실</b></td><td>file library</td><td>전사·부서 단위 파일 공유(같은 이름은 새 판으로 누적).</td></tr><tr><td><b>내 보관함</b></td><td>my storage</td><td>개인 폴더. 문서·파일을 모아 둠.</td></tr></table>
+<p>"참조"는 <b>cc</b>이며, 대결(대신 결재)과 전결(한도 내 최종 결재)을 헷갈리지 마세요.</p><div class="pn"><span></span><a href="install.html">다음: 2. 설치 &rarr;</a></div><footer>e-approval-kr (결재) 설명서 · MIT 라이선스 · 화면 이름은 버전에 따라 조금 다를 수 있습니다.</footer></div></body></html>

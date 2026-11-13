@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>문제 해결 - e-approval-kr 전자결재 설명서</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>목차</b></a><a href="../index.html">언어 선택</a><span class="sp"></span><a href="../en/troubleshooting.html">English</a></div></nav>
+<div class="wrap"><h1>문제 해결</h1>
+
+<h2>브라우저에 접속이 안 돼요</h2>
+<ol><li>서버 컴퓨터에서 <code>http://127.0.0.1:8130/healthz</code>를 열어 보세요. 열리면 서버는 정상입니다.</li>
+<li>안 열리면 서비스가 꺼져 있는 것입니다. Windows는 <code>services.msc</code>에서 e-approval-kr을 시작, Linux는 <code>sudo systemctl start e-approval-kr</code>.</li>
+<li>서버에서는 열리는데 다른 PC에서 안 열리면, 접속 범위가 "이 컴퓨터만"일 수 있습니다. <a href="first-setup.html">첫 설정 2단계</a>에서 사내망으로 바꾸고 <b>서비스를 다시 시작</b>하세요.</li>
+<li>그래도 안 되면 방화벽(아래)과 서버 주소(IP)가 맞는지 확인합니다. 같은 사무실 네트워크에 있는 PC인지도 확인하세요.</li></ol>
+<h2>"포트가 이미 사용 중" 오류</h2>
+<p>8130 포트를 다른 프로그램(또는 같은 서버를 두 번 실행한 것)이 쓰고 있습니다.</p>
+<ul><li>서버가 이미 실행 중인지 확인하고 중복 실행을 끕니다.</li>
+<li>다른 포트로 실행: <code>e-approval-kr serve --port 8131</code>. 서비스로 쓰고 있다면 서비스 설정에서 포트를 바꿉니다(버전별 설정 위치는 설치 안내를 참고).</li>
+<li>누가 쓰는지 확인: Windows <code>netstat -ano | findstr 8130</code>, Linux/macOS <code>sudo lsof -i :8130</code>.</li></ul>
+<h2 id="fw">방화벽</h2>
+<p>다른 PC에서 접속하게 하려면 서버의 방화벽이 8130 포트를 <b>사내망에서만</b> 허용해야 합니다. 인터넷 전체에 열지 마세요.</p>
+<ul><li>Windows: 설치 때 "사내망 접속 허용"을 체크했다면 이미 만들어져 있습니다. 직접 만들려면(관리자 PowerShell):<pre><code>New-NetFirewallRule -DisplayName e-approval-kr -Direction Inbound -Protocol TCP -LocalPort 8130 -RemoteAddress LocalSubnet -Action Allow</code></pre></li>
+<li>Linux(ufw): <code>sudo ufw allow from 192.168.0.0/24 to any port 8130 proto tcp</code> (사내 대역에 맞게 바꾸세요)</li>
+<li>macOS: 시스템 설정 → 네트워크 → 방화벽에서 들어오는 연결 허용 여부를 확인합니다.</li></ul>
+<h2 id="pw">비밀번호를 잊었어요</h2>
+<p>일반 직원: 관리자에게 임시 비밀번호 재발급을 요청합니다(<b>관리 → 사원</b>).</p>
+<div class="adm"><b>관리자용: 관리자 본인 비밀번호 분실</b>서버 컴퓨터에서 CLI로 재발급합니다(데이터 폴더에 접근할 수 있는 운영자만 가능).<pre><code>e-approval-kr -u admin emp resetpw admin</code></pre>
+새 임시 비밀번호가 한 번 출력됩니다. 로그인하면 바로 바꾸게 됩니다. Linux·macOS 서비스 설치본에서는 도우미 명령을 쓰세요.
+<pre><code>sudo e-approval-kr-admin -u admin emp resetpw admin</code></pre></div>
+<h2>로그는 어디에 있나요?</h2>
+<ul><li>Linux: <code>journalctl -u e-approval-kr -e</code></li>
+<li>Windows: 서비스 로그는 설치 폴더 또는 데이터 폴더(<code>C:\ProgramData\e-approval-kr</code>) 안의 로그 파일에 남습니다. 정확한 파일 이름은 버전별로 다를 수 있으니 폴더를 열어 확인하세요.</li>
+<li>macOS: <code>/Library/Logs/e-approval-kr</code> 폴더.</li>
+<li>업무 이력(누가 무엇을 했는지)은 <b>관리 → 감사로그</b>와 데이터 폴더의 <code>audit.log</code>에 있습니다.</li></ul>
+<h2>설치 때 경고가 나와요</h2>
+<ul><li><b>Windows "PC 보호" 창:</b> <b>추가 정보 → 실행</b>. <a href="install.html#win">설명</a></li>
+<li><b>macOS "열 수 없음":</b> 파일 오른쪽 클릭 → 열기, 또는 개인정보 보호 및 보안 → "그래도 열기". <a href="install.html#mac">설명</a></li></ul>
+<p>이 프로그램은 아직 인증서로 서명되지 않아서 나오는 경고입니다. 받은 곳이 공식 배포 페이지인지 꼭 확인한 뒤 진행하세요.</p>
+<h2>그 밖에</h2>
+<ul><li>로그인이 막혔어요: 같은 아이디로 10분에 5번(같은 PC 주소에서는 20번) 틀리면 10분 동안 막힙니다. 기다렸다 다시 시도하거나, 관리자가 비밀번호를 재발급하세요.</li>
+<li>첨부가 올라가지 않아요: 파일 하나 10MB, 합계 30MB 이하이고 허용된 확장자인지 확인하세요.</li>
+<li>화면이 옛날 그대로예요: 브라우저에서 <kbd>Ctrl</kbd>+<kbd>F5</kbd>로 새로 고칩니다.</li></ul>
+
+<div class="pn"><a href="security.html">&larr; 이전: 7. 보안 권장</a><a href="cli.html">다음: 9. CLI 참고 &rarr;</a></div><footer>e-approval-kr (결재) 설명서 · MIT 라이선스 · 화면 이름은 버전에 따라 조금 다를 수 있습니다.</footer></div></body></html>

@@ -1,0 +1,9 @@
+# Caddy: 자동 HTTPS 리버스 프록시 예시. 도메인을 바꾸고 `caddy run` (또는 서비스로).
+# gyeoljae 는 GYEOLJAE_TRUST_PROXY=1 GYEOLJAE_COOKIE_SECURE=1 로 127.0.0.1:8130 에서 실행.
+gyeol.example.com {
+	encode gzip
+	request_body {
+		max_size 32MB
+	}
+	reverse_proxy 127.0.0.1:8130
+}

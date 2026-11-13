@@ -1,0 +1,24 @@
+# Linux systemd 예시. 경로·사용자를 바꿔서 /etc/systemd/system/gyeoljae.service 로 복사:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now gyeoljae
+[Unit]
+Description=gyeoljae 전자결재
+After=network.target
+
+[Service]
+User=gyeoljae
+Environment=GYEOLJAE_DATA=/var/lib/gyeoljae
+# 리버스 프록시(Caddy/Cloudflare Tunnel) 뒤에서 HTTPS 로 쓸 때만:
+#Environment=GYEOLJAE_TRUST_PROXY=1
+#Environment=GYEOLJAE_COOKIE_SECURE=1
+WorkingDirectory=/opt/gyeoljae
+ExecStart=/usr/bin/python3 -m gyeoljae serve --host 127.0.0.1 --port 8130
+Environment=PYTHONPATH=/opt/gyeoljae/src
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gyeoljae
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

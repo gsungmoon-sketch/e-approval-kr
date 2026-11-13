@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security recommendations - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/security.html">한국어</a></div></nav>
+<div class="wrap"><h1>Security recommendations</h1>
+
+<p>Approval documents hold important company information. Please follow these points.</p>
+<ol>
+<li><b>Default is this computer only (127.0.0.1).</b> Open it to the office network only when staff need to share it, and avoid exposing it directly to the internet (router port forwarding).</li>
+<li><b>Use an HTTPS proxy for LAN or outside access.</b> Plain HTTP can be read on the same network. See <a href="first-setup.html#https">HTTPS setup</a>. Behind the proxy turn on <code>GYEOLJAE_TRUST_PROXY=1</code> and <code>GYEOLJAE_COOKIE_SECURE=1</code> (never without a proxy).</li>
+<li><b>Firewall: office network only.</b> See <a href="troubleshooting.html#fw">Firewall</a>.</li>
+<li><b>No demo data.</b> Accounts from <code>seed-demo</code> use a publicly known password. Never use it with real data.</li>
+<li><b>Two or more administrators, and turn on two-person approval.</b> See <a href="admin.html#two">Two-person approval</a>.</li>
+<li><b>Store backups elsewhere and encrypted.</b> Backup zips contain document bodies and personal data. See <a href="backup.html">Backup and restore</a>.</li>
+<li><b>The SMTP password</b> is stored in <code>smtp.json</code> in the data folder. Limit who can reach the data folder and backups to server administrators. Use a low-privilege account or app password.</li>
+<li><b>Data folder permissions.</b> Only the service account and administrators should read it. Treat anyone with access to the data folder as able to do every administrative action through the CLI.</li>
+<li><b>Verify regularly.</b> Run <code>verify-audit</code> monthly and store the <code>export-audit-head</code> value elsewhere. See <a href="backup.html#head">audit head</a>.</li>
+<li><b>Handle leavers at once.</b> Setting someone to retired blocks sign-in and keeps records.</li>
+<li><b>Keep up to date.</b> New versions may contain security fixes; see <a href="backup.html#upgrade">Upgrading</a>.</li></ol>
+<h2>Built-in protections</h2>
+<ul><li>Sign-in attempt limits (5 per account and 20 per IP within 10 minutes).</li>
+<li>Session cookies are HttpOnly and SameSite=Strict (Secure over HTTPS); every changing request is CSRF-checked.</li>
+<li>Attachments: only allowed extensions and sizes; files are stored under numbers only.</li>
+<li>Documents you may not see are answered as "does not exist".</li></ul>
+<p>If you find a vulnerability, please report it privately through GitHub Security Advisories instead of a public issue: <code>https://github.com/gsungmoon-sketch/e-approval-kr/security/advisories/new</code></p>
+
+<div class="pn"><a href="backup.html">&larr; Previous: 6. Backup, restore, upgrade</a><a href="troubleshooting.html">Next: 8. Troubleshooting and FAQ &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

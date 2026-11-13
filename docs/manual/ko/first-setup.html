@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>첫 설정 마법사 - e-approval-kr 전자결재 설명서</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>목차</b></a><a href="../index.html">언어 선택</a><span class="sp"></span><a href="../en/first-setup.html">English</a></div></nav>
+<div class="wrap"><h1>첫 설정 마법사</h1>
+
+<p>설치가 끝나면 브라우저에 <code>http://127.0.0.1:8130/setup</code> 화면이 열립니다. 자동으로 열리지 않으면 주소창에 직접 입력하세요.
+설정은 <b>서버가 설치된 바로 그 컴퓨터</b>에서만 할 수 있습니다(다른 PC에서는 막혀 있습니다. 안전을 위한 것입니다).</p>
+
+<h2>1단계. 첫 관리자 만들기</h2>
+<ol>
+<li><b>아이디</b>(예: <code>admin</code>), <b>이름</b>(예: 관리자), <b>비밀번호</b>를 입력합니다.</li>
+<li>비밀번호는 길고 추측하기 어렵게 정하고, 안전한 곳에 적어 두세요. 분실하면 <a href="troubleshooting.html#pw">CLI로 재발급</a>해야 합니다.</li>
+</ol>
+<h2>2단계. 접속 범위(바인드 주소)</h2>
+<table><tr><th>선택</th><th>뜻</th><th>언제</th></tr>
+<tr><td><b>이 컴퓨터만</b> (127.0.0.1)</td><td>이 컴퓨터의 브라우저에서만 접속됩니다.</td><td>혼자 쓰거나 시험할 때. 기본값이며 가장 안전합니다.</td></tr>
+<tr><td><b>사내망(LAN)</b> (0.0.0.0)</td><td>같은 사무실 네트워크의 다른 PC에서도 접속됩니다.</td><td>직원이 함께 쓸 때.</td></tr></table>
+<div class="warn"><b>주의</b>사내망을 고르면 마법사가 경고를 보여 줍니다. 암호화되지 않은 HTTP로는 같은 네트워크의 다른 사람이 내용을 엿볼 수 있으므로, <a href="#https">HTTPS 프록시</a>를 앞에 두는 것을 권장합니다. 인터넷에 직접 여는 것(공유기 포트포워딩)은 권장하지 않습니다.</div>
+<p>접속 범위를 바꾼 뒤에는 <b>서비스를 다시 시작</b>해야 적용됩니다.</p>
+<ul><li>Windows: 서비스 관리(Win+R → <code>services.msc</code>)에서 <b>e-approval-kr</b>을 찾아 오른쪽 클릭 → 다시 시작</li>
+<li>macOS: 시스템을 다시 시작하거나 <a href="install.html#mac">설치 페이지의 launchctl 명령</a> 사용</li>
+<li>Linux: <code>sudo systemctl restart e-approval-kr</code></li></ul>
+<h2>3단계. 백업 폴더 정하기</h2>
+<p>백업을 저장할 폴더를 고릅니다. 하루에 한 번 자동으로 백업이 만들어지고 <b>최근 14개</b>를 보관합니다(오래된 것은 자동 삭제). 첫 백업은 설정을 마치는 즉시 만들어집니다(폴더에 쓸 수 없으면 오류로 알려 줌).
+가능하면 <b>서버와 다른 디스크</b>(외장 디스크, 네트워크 저장소)의 폴더를 고르세요. 서버 디스크가 고장 나면 같은 디스크의 백업도 함께 사라집니다.
+자세한 내용은 <a href="backup.html">백업·복구</a>를 보세요.</p>
+<h2 id="wizard-details">마법사 입력칸과 저장되는 곳</h2>
+<table><tr><th>칸</th><th>설명</th></tr>
+<tr><td>관리자 아이디·이름·비밀번호</td><td>비밀번호는 8자 이상, 두 번 입력해 확인합니다.</td></tr>
+<tr><td>관리 부서 코드·이름</td><td>첫 관리자가 속할 부서(기본 <code>ADM</code>·관리부). 나중에 바꿀 수 있습니다.</td></tr>
+<tr><td>접속 범위·포트</td><td>이 컴퓨터만(<code>127.0.0.1</code>) / 사내망(<code>0.0.0.0</code>), 기본 포트 8130.</td></tr>
+<tr><td>백업 폴더</td><td>비우면 자동 백업을 하지 않습니다.</td></tr></table>
+<ul><li>접속 범위·포트·백업 폴더는 데이터 폴더의 <code>server.json</code>(<code>host</code>, <code>port</code>, <code>backup_dir</code>, <code>backup_keep</code>)에 저장됩니다. <code>serve</code>를 옵션 없이 실행하면 이 파일을 읽습니다. <code>serve --host … --port …</code>로 직접 주면 그쪽이 우선합니다.</li>
+<li>설정이 끝나면 <code>/setup</code> 주소는 로그인 화면으로 바뀝니다(사용자가 생긴 뒤에는 다시 열리지 않음). 마법사 중에는 <code>http://127.0.0.1:8130/healthz</code>가 <code>{"ok": true, "version": "…"}</code>를 돌려줍니다(서비스 감시용).</li>
+<li>Linux에서 설치 때 <code>--lan</code> 또는 <code>--port</code>를 썼다면 서비스 설정의 <code>listen.conf</code>가 <code>server.json</code>보다 우선합니다. 다시 <code>server.json</code>을 쓰려면 <code>/etc/systemd/system/e-approval-kr.service.d/listen.conf</code>를 지우고 <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart e-approval-kr</code>.</li>
+<li>다른 PC에서 <code>/setup</code>을 열면 "서버가 설치된 컴퓨터에서 여세요"라는 안내만 보입니다.</li></ul>
+
+<h2 id="wizard-details">마법사 입력칸과 저장되는 곳</h2>
+<table><tr><th>칸</th><th>설명</th></tr>
+<tr><td>관리자 아이디·이름·비밀번호</td><td>비밀번호는 8자 이상, 두 번 입력해 확인합니다.</td></tr>
+<tr><td>관리 부서 코드·이름</td><td>첫 관리자가 속할 부서(기본 <code>ADM</code>·관리부). 나중에 바꿀 수 있습니다.</td></tr>
+<tr><td>접속 범위·포트</td><td>이 컴퓨터만(<code>127.0.0.1</code>) / 사내망(<code>0.0.0.0</code>), 기본 포트 8130.</td></tr>
+<tr><td>백업 폴더</td><td>비우면 자동 백업을 하지 않습니다.</td></tr></table>
+<ul><li>접속 범위·포트·백업 폴더는 데이터 폴더의 <code>server.json</code>(<code>host</code>, <code>port</code>, <code>backup_dir</code>, <code>backup_keep</code>)에 저장됩니다. <code>serve</code>를 옵션 없이 실행하면 이 파일을 읽습니다. <code>serve --host … --port …</code>로 직접 주면 그쪽이 우선합니다.</li>
+<li>설정이 끝나면 <code>/setup</code> 주소는 로그인 화면으로 바뀝니다(사용자가 생긴 뒤에는 다시 열리지 않음). 마법사 중에는 <code>http://127.0.0.1:8130/healthz</code>가 <code>{"ok": true, "version": "…"}</code>를 돌려줍니다(서비스 감시용).</li>
+<li>Linux에서 설치 때 <code>--lan</code> 또는 <code>--port</code>를 썼다면 서비스 설정의 <code>listen.conf</code>가 <code>server.json</code>보다 우선합니다. 다시 <code>server.json</code>을 쓰려면 <code>/etc/systemd/system/e-approval-kr.service.d/listen.conf</code>를 지우고 <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart e-approval-kr</code>.</li>
+<li>다른 PC에서 <code>/setup</code>을 열면 "서버가 설치된 컴퓨터에서 여세요"라는 안내만 보입니다.</li></ul>
+
+<h2 id="wizard-details">마법사 입력칸과 저장되는 곳</h2>
+<table><tr><th>칸</th><th>설명</th></tr>
+<tr><td>관리자 아이디·이름·비밀번호</td><td>비밀번호는 8자 이상, 두 번 입력해 확인합니다.</td></tr>
+<tr><td>관리 부서 코드·이름</td><td>첫 관리자가 속할 부서(기본 <code>ADM</code>·관리부). 나중에 바꿀 수 있습니다.</td></tr>
+<tr><td>접속 범위·포트</td><td>이 컴퓨터만(<code>127.0.0.1</code>) / 사내망(<code>0.0.0.0</code>), 기본 포트 8130.</td></tr>
+<tr><td>백업 폴더</td><td>비우면 자동 백업을 하지 않습니다.</td></tr></table>
+<ul><li>접속 범위·포트·백업 폴더는 데이터 폴더의 <code>server.json</code>(<code>host</code>, <code>port</code>, <code>backup_dir</code>, <code>backup_keep</code>)에 저장됩니다. <code>serve</code>를 옵션 없이 실행하면 이 파일을 읽습니다. <code>serve --host … --port …</code>로 직접 주면 그쪽이 우선합니다.</li>
+<li>설정이 끝나면 <code>/setup</code> 주소는 로그인 화면으로 바뀝니다(사용자가 생긴 뒤에는 다시 열리지 않음). 마법사 중에는 <code>http://127.0.0.1:8130/healthz</code>가 <code>{"ok": true, "version": "…"}</code>를 돌려줍니다(서비스 감시용).</li>
+<li>Linux에서 설치 때 <code>--lan</code> 또는 <code>--port</code>를 썼다면 서비스 설정의 <code>listen.conf</code>가 <code>server.json</code>보다 우선합니다. 다시 <code>server.json</code>을 쓰려면 <code>/etc/systemd/system/e-approval-kr.service.d/listen.conf</code>를 지우고 <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart e-approval-kr</code>.</li>
+<li>다른 PC에서 <code>/setup</code>을 열면 "서버가 설치된 컴퓨터에서 여세요"라는 안내만 보입니다.</li></ul>
+
+<h2>4단계. 끝내고 로그인</h2>
+<p>마법사를 마치면 로그인 화면으로 갑니다. 방금 만든 관리자 아이디로 로그인하고, 다음 순서로 조직을 준비합니다.</p>
+<ol><li><b>관리 → 부서</b> 등록</li><li><b>관리 → 직위·서열</b> 확인(기본 직위가 있으며 고칠 수 있음)</li><li><b>관리 → 사원</b> 등록(또는 CSV 일괄 등록)</li><li><b>관리 → 규정·전결</b>에서 부서별 결재선 설정</li></ol>
+<p>자세한 방법은 <a href="admin.html">관리자 설명서</a>에 있습니다.</p>
+<div class="adm"><b>관리자용: 마법사 없이 설정</b>
+<pre><code>echo '여기에비밀번호' &gt; pw.txt
+e-approval-kr setup --admin-id admin --admin-name 관리자 --password-file pw.txt
+# 비밀번호 파일은 쓰고 나면 바로 삭제하세요
+e-approval-kr serve --host 127.0.0.1 --port 8130</code></pre>
+<p>다른 PC에서 접속하게 하려면 <code>--host 0.0.0.0</code>. 서비스 설치본에서는 서비스 설정에 주소가 들어 있으므로 마법사(또는 설정 파일)로 바꾸고 서비스를 다시 시작합니다.
+서버 상태 확인: <code>GET /healthz</code>.</p>
+<p><b>다른 PC에서 설정이 필요할 때:</b> 서버에 SSH나 원격 데스크톱으로 접속한 뒤 그 안의 브라우저에서 <code>127.0.0.1:8130/setup</code>을 열거나, 위 CLI 방법을 쓰세요.</p></div>
+
+<h2 id="https">HTTPS로 안전하게 공개하기</h2>
+<p>사내망이나 외부(재택·모바일)에서 접속하게 할 때는 앞에 <b>HTTPS 리버스 프록시</b>를 둡니다. 프록시가 암호화를 맡고, e-approval-kr은 계속 <code>127.0.0.1:8130</code>에서 실행합니다.</p>
+<div class="adm"><b>관리자용: Caddy 예</b>
+<ol><li>도메인(예: <code>approval.example.com</code>)이 서버를 가리키게 하고, 80·443 포트를 엽니다.</li>
+<li>서버 환경변수에 <code>GYEOLJAE_TRUST_PROXY=1</code>, <code>GYEOLJAE_COOKIE_SECURE=1</code>을 줍니다. <b>프록시 뒤에서만</b> 켜세요(직접 노출된 서버에서 켜면 로그인 제한을 속일 수 있습니다).</li>
+<li>Caddyfile:<pre><code>approval.example.com {
+    reverse_proxy 127.0.0.1:8130
+}</code></pre>저장소의 <code>deploy/caddy/Caddyfile</code> 예시도 참고하세요. 인증서는 Caddy가 자동으로 받습니다.</li></ol>
+<p>다른 방법: Cloudflare Tunnel(포트포워딩 불필요), 또는 서버 자체 HTTPS(<code>serve --https 인증서.pem 키.pem</code>). 자세한 내용은 저장소 <code>docs/DEPLOY.md</code>.</p></div>
+
+<div class="pn"><a href="install.html">&larr; 이전: 2. 설치</a><a href="admin.html">다음: 4. 관리자 설명서 &rarr;</a></div><footer>e-approval-kr (결재) 설명서 · MIT 라이선스 · 화면 이름은 버전에 따라 조금 다를 수 있습니다.</footer></div></body></html>

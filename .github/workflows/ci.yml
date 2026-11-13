@@ -1,0 +1,25 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: sqlite / fts5
+        run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
+      - name: unit + web tests
+        working-directory: tests
+        run: python -m unittest -v discover -p "test_*.py"
+      - name: end-to-end scenario
+        run: python tests/e2e_scenario.py

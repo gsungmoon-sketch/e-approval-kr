@@ -1,0 +1,72 @@
+#!/bin/sh
+# e-approval-kr postinstall: hidden service user, data/log dirs, symlink, start the LaunchDaemon,
+# then open the setup page for the logged-in user (not for command-line installs).
+set -u
+LABEL=com.e-approval-kr.server
+PLIST=/Library/LaunchDaemons/$LABEL.plist
+LIB=/usr/local/lib/e-approval-kr
+DATA="/Library/Application Support/e-approval-kr"
+LOGS=/Library/Logs/e-approval-kr
+U=_eapprovalkr
+
+# 1. hidden system user/group (UID/GID in the 400-499 range, first free one)
+free_id() { # $1 = /Users UniqueID | /Groups PrimaryGroupID
+    used=$(dscl . -list "$1" "$2" | awk '{print $2}')
+    i=400
+    while [ $i -lt 500 ]; do
+        echo "$used" | grep -qx "$i" || { echo $i; return 0; }
+        i=$((i + 1))
+    done
+    return 1
+}
+if ! dscl . -read "/Groups/$U" >/dev/null 2>&1; then
+    GID=$(free_id /Groups PrimaryGroupID) || { echo "no free GID" >&2; exit 1; }
+    dscl . -create "/Groups/$U"
+    dscl . -create "/Groups/$U" PrimaryGroupID "$GID"
+    dscl . -create "/Groups/$U" RealName "e-approval-kr server"
+    dscl . -create "/Groups/$U" Password '*'
+fi
+GID=$(dscl . -read "/Groups/$U" PrimaryGroupID | awk '{print $2}')
+if ! dscl . -read "/Users/$U" >/dev/null 2>&1; then
+    UID_=$(free_id /Users UniqueID) || { echo "no free UID" >&2; exit 1; }
+    dscl . -create "/Users/$U"
+    dscl . -create "/Users/$U" UniqueID "$UID_"
+    dscl . -create "/Users/$U" PrimaryGroupID "$GID"
+    dscl . -create "/Users/$U" UserShell /usr/bin/false
+    dscl . -create "/Users/$U" NFSHomeDirectory /var/empty
+    dscl . -create "/Users/$U" RealName "e-approval-kr server"
+    dscl . -create "/Users/$U" Password '*'
+    dscl . -create "/Users/$U" IsHidden 1
+fi
+
+# 2. directories: data 0700 and logs 0750, owned by the service user
+mkdir -p "$DATA" "$LOGS"
+chown "$U:$U" "$DATA" "$LOGS"
+chmod 0700 "$DATA"
+chmod 0750 "$LOGS"
+
+# 3. program permissions + command-line symlink
+chown -R root:wheel "$LIB"
+chmod -R go-w "$LIB"
+mkdir -p /usr/local/bin
+ln -sfn "$LIB/e-approval-kr" /usr/local/bin/e-approval-kr
+chown root:wheel "$PLIST"
+chmod 0644 "$PLIST"
+
+# 4. start the daemon
+launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
+launchctl bootstrap system "$PLIST" || launchctl load -w "$PLIST"
+launchctl enable "system/$LABEL" >/dev/null 2>&1 || true
+
+# 5. open the setup wizard for the console user (GUI installs only)
+if [ -z "${COMMAND_LINE_INSTALL:-}" ]; then
+    CU=$(stat -f %Su /dev/console 2>/dev/null || echo root)
+    if [ -n "$CU" ] && [ "$CU" != root ] && [ "$CU" != loginwindow ]; then
+        i=0
+        while [ $i -lt 20 ] && ! curl -fsS -o /dev/null http://127.0.0.1:8130/healthz 2>/dev/null; do
+            sleep 0.5; i=$((i + 1))
+        done
+        launchctl asuser "$(id -u "$CU")" sudo -u "$CU" open "http://127.0.0.1:8130/setup" >/dev/null 2>&1 || true
+    fi
+fi
+exit 0

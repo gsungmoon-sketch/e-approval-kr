@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>백업·복구 - e-approval-kr 전자결재 설명서</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>목차</b></a><a href="../index.html">언어 선택</a><span class="sp"></span><a href="../en/backup.html">English</a></div></nav>
+<div class="wrap"><h1>백업·복구</h1>
+
+<p>백업은 문서 원문·첨부·사원 정보가 모두 들어 있는 zip 파일 하나입니다. 서버가 켜져 있어도 만들 수 있습니다.</p>
+<h2>자동 백업</h2>
+<p><a href="first-setup.html">첫 설정</a>에서 백업 폴더를 정하면 서버가 매시간 확인하여 <b>하루에 한 번</b> <code>e-approval-kr-YYYYMMDD-HHMMSS.zip</code> 파일을 만들고, 이 이름 형식의 파일을 <b>최근 14개</b>만 남깁니다(다른 이름의 파일은 건드리지 않음). 설정 직후 첫 백업은 최대 1시간 안에 생깁니다. 보관 개수는 데이터 폴더의 <code>server.json</code>에서 <code>"backup_keep"</code>(1~365)로 바꾸고 서비스를 다시 시작합니다.
+폴더는 <b>서버와 다른 디스크</b>에 두세요. 일주일에 한 번은 외장 디스크나 다른 PC로 복사해 두면 더 안전합니다.</p>
+<div class="note"><b>점검 습관</b>자동 백업이 실제로 만들어지는지 가끔 백업 폴더를 열어 날짜별 파일이 쌓이는지 확인하세요.</div>
+<h2>수동 백업</h2>
+<div class="adm"><b>관리자용</b><pre><code>e-approval-kr backup 2026-11-13.zip</code></pre>
+데이터 위치를 직접 줄 때: <code>e-approval-kr --data &lt;데이터폴더&gt; backup 파일.zip</code></div>
+<div class="warn"><b>백업 파일은 민감 정보입니다</b>문서와 개인정보가 들어 있으므로 암호화된 저장소(예: 암호를 건 외장 디스크)에 두고, 아무나 열람하지 못하게 하세요.</div>
+<h2>복구</h2>
+<ol><li>서버를 멈춥니다(Windows 서비스 중지 / <code>sudo systemctl stop e-approval-kr</code>).</li>
+<li><b>빈 폴더</b>에 복구합니다. 기존 데이터 위에는 복구되지 않습니다. 기존 데이터 폴더는 지우지 말고 이름을 바꿔 보관하세요.</li>
+<li>복구가 끝나면 자동으로 감사로그를 검증합니다.</li>
+<li>복구한 폴더를 서비스가 쓰도록 하고(또는 기존 폴더 위치에 놓고) 서버를 시작합니다.</li></ol>
+<div class="adm"><b>관리자용</b><pre><code>e-approval-kr restore 2026-11-13.zip --to /경로/새-빈-폴더</code></pre>
+서비스 설치본의 데이터 폴더는 <a href="install.html">설치</a> 페이지의 위치를 보세요. Linux에서는 복구 후 폴더 소유자를 <code>e-approval-kr</code> 사용자로 맞춰야 합니다(<code>sudo chown -R e-approval-kr: 폴더</code>).</div>
+<h2 id="head">감사 머리값 보관</h2>
+<p>감사로그는 서로 이어진 해시(체인)로 되어 있습니다. 데이터 폴더를 마음대로 고칠 수 있는 사람은 체인 전체를 다시 만들 수도 있으므로, 현재 체인의 <b>머리값</b>(번호와 해시)을 정기적으로 <b>다른 곳</b>에 적어 두면 그런 시도까지 잡아낼 수 있습니다.</p>
+<div class="adm"><b>관리자용</b><pre><code>e-approval-kr export-audit-head              # 번호와 해시 출력 → 다른 곳에 보관
+e-approval-kr check-audit-head &lt;번호&gt; &lt;해시&gt;   # 보관한 값이 그대로인지 확인
+e-approval-kr -u admin verify-audit          # 체인·완료문서 변조 검증</code></pre></div>
+<p>권장 주기: 월 1회 머리값을 보관하고 검증을 실행합니다.</p>
+
+<h2 id="upgrade">새 버전으로 올리기</h2>
+
+<p>새 버전을 설치해도 <b>데이터는 그대로 유지</b>됩니다. 그래도 항상 먼저 백업하세요.</p>
+<ol>
+<li><b>백업:</b> <a href="backup.html">수동 백업</a>을 한 번 만들고 안전한 곳에 복사합니다.</li>
+<li>사용이 적은 시간(퇴근 후 등)을 고르고 직원에게 알립니다. 서버는 잠깐 멈춥니다.</li>
+<li><b>새 설치 파일을 받아 실행합니다.</b> 같은 방식으로 한 번 더 설치하면 됩니다.
+<ul><li>Windows: 새 <code>setup-&lt;버전&gt;-win-x64.exe</code> 실행(SmartScreen 안내는 <a href="install.html#win">동일</a>). 제거할 필요 없음.</li>
+<li>macOS: 새 <code>.pkg</code> 설치.</li>
+<li>Linux: 새 tar.gz를 풀고 <code>sudo ./install.sh</code>(처음에 <code>--lan</code>을 썼다면 같이 지정).</li>
+<li>pyz: 새 파일로 바꿔 실행.</li>
+<li>Docker: 새 이미지를 만들고 <b>같은 볼륨</b>으로 컨테이너를 다시 실행.</li></ul></li>
+<li>접속해 로그인되는지, 최근 문서가 보이는지 확인합니다. <code>/healthz</code>도 확인합니다.</li>
+<li>문제가 생기면 이전 버전을 다시 설치하거나, 백업을 <a href="backup.html">복구</a>합니다.</li></ol>
+<div class="note"><b>설정은 유지됩니다</b>접속 범위·포트·백업 폴더는 데이터 폴더의 <code>server.json</code>에 있어 업그레이드해도 그대로입니다. 다만 새 설치 파일이 서비스 설정을 새로 쓰므로(Linux는 <code>--lan</code>·<code>--port</code> 옵션을 처음처럼 다시 지정), 업그레이드 뒤 다른 PC에서 접속되는지 한 번 확인하세요.</div>
+<div class="adm"><b>관리자용</b>업그레이드 직후 <code>e-approval-kr -u admin verify-audit</code>로 감사로그 이상 없음을 확인하세요.</div>
+
+<div class="pn"><a href="user.html">&larr; 이전: 5. 사용자 설명서</a><a href="security.html">다음: 7. 보안 권장 &rarr;</a></div><footer>e-approval-kr (결재) 설명서 · MIT 라이선스 · 화면 이름은 버전에 따라 조금 다를 수 있습니다.</footer></div></body></html>

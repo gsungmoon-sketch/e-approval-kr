@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLI reference - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/cli.html">한국어</a></div></nav>
+<div class="wrap"><h1>9. CLI reference</h1><p>The help texts in this chapter are the actual output of <code>gyeol &lt;command&gt; --help</code> (version 0.1.0, checked on a server). Note that <b>the help text itself is in Korean</b>; an English summary of each command is given above its help. On installed packages use <code>e-approval-kr</code> instead of <code>gyeol</code>, and on Linux/macOS service installs use <code>sudo e-approval-kr-admin</code>.</p>
+<h2>Common usage</h2>
+<pre>gyeol [--data DATA_DIR] [-u USER_ID] [--json] &lt;command&gt; ...</pre>
+<ul><li><code>--data</code>: data folder (default: environment variable <code>GYEOLJAE_DATA</code>, or the per-OS default).</li>
+<li><code>-u</code>: the acting user (also via <code>GYEOLJAE_USER</code>). <b>It is not authentication</b>; only operators of the server may use the CLI. Exception: <code>change approve|reject</code> re-confirm that administrator's password (terminal prompt; scripts use <code>--password-file</code>).</li>
+<li><code>--json</code>: machine-readable output. Amounts may be written like <code>150만</code> (1,500,000) or <code>1,500,000</code>.</li>
+<li>The commands used as examples (<code>backup</code>, <code>restore</code>, <code>export-audit-head</code>, <code>check-audit-head</code>, <code>verify-audit</code>, <code>emp add/resetpw</code>, <code>dept add</code>, <code>policy edit/preview</code>, <code>draft/approve/reject/withdraw</code>, <code>delegate set</code>, <code>change approve</code>, <code>setting</code>) were actually run against a temporary data folder.</li></ul><h2>Examples: common sequences</h2><pre><code>gyeol --data D backup 백업.zip                 # backup
+gyeol --data D export-audit-head               # {"seq": 26, "hash": "..."}  -> store elsewhere
+gyeol --data D check-audit-head 26 &lt;hash&gt;      # OK: 체인에 그대로 있음
+gyeol restore 백업.zip --to 빈폴더              # restore (verifies the audit chain)
+gyeol -u admin emp add --name 홍길동 --dept DEV --position 팀원 --hired 2026-11-13
+gyeol -u admin emp resetpw 26111301            # new temporary password, shown once
+gyeol -u dev1 draft --title "노트북 구매" --form expense --field purpose=업무용 --field pay=법인카드 \
+      --row "items:item=노트북;qty=1;price=90만" --attach 영수증.pdf --submit
+gyeol -u devlead approve 3 -m 확인 ; gyeol -u devlead reject 4 -m "사유를 다시 적어 주세요"
+gyeol -u dev1 withdraw 4 ; gyeol -u devlead delegate set --to ceo --start 2026-11-14 --end 2026-11-20</code></pre><h2>Setup and operations</h2><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>init</code></td><td>create the first administrator</td></tr><tr><td><code>setup</code></td><td>first-run setup: create the first administrator (non-interactive with options)</td></tr><tr><td><code>seed-demo</code></td><td>demo data into an EMPTY data folder (password demo1234!, testing only)</td></tr><tr><td><code>backup</code></td><td>make a backup zip (consistent while running)</td></tr><tr><td><code>restore</code></td><td>restore a backup zip into an empty data folder</td></tr><tr><td><code>export-audit-head</code></td><td>print the audit-chain head for off-site storage</td></tr><tr><td><code>check-audit-head</code></td><td>check that a stored head is still in the chain</td></tr><tr><td><code>serve</code></td><td>web server</td></tr><tr><td><code>verify-audit</code></td><td>verify audit hash chain and completed-document hashes</td></tr><tr><td><code>audit</code></td><td>audit log (admin)</td></tr><tr><td><code>menu</code></td><td>BBS-style interactive menu</td></tr></table><h3 id="c-init"><code>init</code></h3><p>create the first administrator.</p><pre>usage: gyeol init [-h] [--dept DEPT] [--dept-name DEPT_NAME] [--admin ADMIN] [--name NAME]
+                  [--password-stdin]
+
+options:
+  -h, --help            show this help message and exit
+  --dept DEPT
+  --dept-name DEPT_NAME
+  --admin ADMIN
+  --name NAME
+  --password-stdin</pre><h3 id="c-setup"><code>setup</code></h3><p>first-run setup: create the first administrator (non-interactive with options).</p><pre>usage: gyeol setup [-h] [--admin-id ADMIN_ID] [--admin-name ADMIN_NAME] [--dept-code DEPT_CODE]
+                   [--dept-name DEPT_NAME] [--password-file PASSWORD_FILE]
+
+options:
+  -h, --help            show this help message and exit
+  --admin-id ADMIN_ID
+  --admin-name ADMIN_NAME
+  --dept-code DEPT_CODE
+  --dept-name DEPT_NAME
+  --password-file PASSWORD_FILE
+                        첫 줄이 비밀번호인 파일(&#x27;-&#x27; = 표준입력). 주면 묻지 않음</pre><h3 id="c-seed-demo"><code>seed-demo</code></h3><p>demo data into an EMPTY data folder (password demo1234!, testing only).</p><pre>usage: gyeol seed-demo [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-backup"><code>backup</code></h3><p>make a backup zip (consistent while running).</p><pre>usage: gyeol backup [-h] out
+
+positional arguments:
+  out
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-restore"><code>restore</code></h3><p>restore a backup zip into an empty data folder.</p><pre>usage: gyeol restore [-h] --to TO zip
+
+positional arguments:
+  zip
+
+options:
+  -h, --help  show this help message and exit
+  --to TO     복원할 (빈) 데이터 디렉터리</pre><h3 id="c-export-audit-head"><code>export-audit-head</code></h3><p>print the audit-chain head for off-site storage.</p><pre>usage: gyeol export-audit-head [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-check-audit-head"><code>check-audit-head</code></h3><p>check that a stored head is still in the chain.</p><pre>usage: gyeol check-audit-head [-h] seq hash
+
+positional arguments:
+  seq
+  hash
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-serve"><code>serve</code></h3><p>web server.</p><pre>usage: gyeol serve [-h] [--host HOST] [--port PORT] [--https CERT KEY]
+
+options:
+  -h, --help        show this help message and exit
+  --host HOST       기본: 데이터 폴더 server.json(최초 설정 마법사에서 고름), 없으면 127.0.0.1(이 PC만)
+  --port PORT       기본: server.json, 없으면 8130
+  --https CERT KEY  직접 HTTPS(인증서·키 PEM)</pre><h3 id="c-verify-audit"><code>verify-audit</code></h3><p>verify audit hash chain and completed-document hashes.</p><pre>usage: gyeol verify-audit [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-audit"><code>audit</code></h3><p>audit log (admin).</p><pre>usage: gyeol audit [-h] [--doc DOC] [--limit LIMIT]
+
+options:
+  -h, --help     show this help message and exit
+  --doc DOC
+  --limit LIMIT</pre><h3 id="c-menu"><code>menu</code></h3><p>BBS-style interactive menu.</p><pre>usage: gyeol menu [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><h2>Administrator: staff, organization, rules</h2><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>emp</code></td><td>employees (admin)</td></tr><tr><td><code>dept</code></td><td>departments</td></tr><tr><td><code>position</code></td><td>positions</td></tr><tr><td><code>org</code></td><td>org chart / find people</td></tr><tr><td><code>policy</code></td><td>per-department approval rules (admin)</td></tr><tr><td><code>change</code></td><td>two-person approval change requests</td></tr><tr><td><code>setting</code></td><td>settings</td></tr><tr><td><code>form</code></td><td>forms: list/show; admins add, copy, edit, disable</td></tr><tr><td><code>smtp</code></td><td>outgoing mail relay settings (admin)</td></tr><tr><td><code>pin</code></td><td>pin/unpin a notice (admin)</td></tr></table><h3 id="c-emp"><code>emp</code></h3><p>employees (admin).</p><pre>usage: gyeol emp [-h] {add,edit,move,role,status,retire,resetpw,list,show,import,export} ...
+
+positional arguments:
+  {add,edit,move,role,status,retire,resetpw,list,show,import,export}
+    add                 사원 등록(임시 비밀번호 1회 표시)
+    move                부서 이동/직위 변경
+    role                역할 user|admin
+    status              재직/휴직/퇴사
+    retire              퇴사(로그인 차단, 기록 보존)
+    resetpw             임시 비밀번호 재발급
+    import              CSV 일괄(기본 미리보기, --apply 로 반영)
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol emp add [-h] --name NAME --dept DEPT --position POSITION [--empno EMPNO] [--id ID]
+                     [--email EMAIL] [--phone PHONE] [--hired HIRED] [--title TITLE] [--admin]
+
+options:
+  -h, --help           show this help message and exit
+  --name NAME
+  --dept DEPT
+  --position POSITION  직위(팀원/팀장/부서장/임원/대표 또는 코드)
+  --empno EMPNO        사번(생략 시 자동: 입사일 YYMMDD+일련번호 2자리, 예 26111301)
+  --id ID              로그인 아이디(기본=사번)
+  --email EMAIL
+  --phone PHONE
+  --hired HIRED        입사일 YYYY-MM-DD(기본 오늘)
+  --title TITLE
+  --admin              관리자 권한
+
+usage: gyeol emp edit [-h] [--name NAME] [--email EMAIL] [--phone PHONE] [--hired HIRED]
+                      [--title TITLE]
+                      who
+
+positional arguments:
+  who
+
+options:
+  -h, --help     show this help message and exit
+  --name NAME
+  --email EMAIL
+  --phone PHONE
+  --hired HIRED
+  --title TITLE
+
+usage: gyeol emp move [-h] [--dept DEPT] [--position POSITION] who
+
+positional arguments:
+  who
+
+options:
+  -h, --help           show this help message and exit
+  --dept DEPT
+  --position POSITION
+
+usage: gyeol emp role [-h] who {user,admin}
+
+positional arguments:
+  who
+  {user,admin}
+
+options:
+  -h, --help    show this help message and exit
+
+usage: gyeol emp status [-h] who status
+
+positional arguments:
+  who
+  status
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol emp retire [-h] who
+
+positional arguments:
+  who
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol emp resetpw [-h] who
+
+positional arguments:
+  who
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol emp list [-h] [--dept DEPT] [-q Q] [--status STATUS]
+
+options:
+  -h, --help       show this help message and exit
+  --dept DEPT
+  -q Q
+  --status STATUS
+
+usage: gyeol emp show [-h] who
+
+positional arguments:
+  who
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol emp import [-h] [--apply] csv
+
+positional arguments:
+  csv
+
+options:
+  -h, --help  show this help message and exit
+  --apply
+
+usage: gyeol emp export [-h] [-o OUTPUT] [--cp949]
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+  --cp949</pre><h3 id="c-dept"><code>dept</code></h3><p>departments.</p><pre>usage: gyeol dept [-h] {add,rename,disable,enable,list} ...
+
+positional arguments:
+  {add,rename,disable,enable,list}
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol dept add [-h] code name
+
+positional arguments:
+  code
+  name
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dept rename [-h] code name
+
+positional arguments:
+  code
+  name
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dept disable [-h] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dept enable [-h] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dept list [-h] [--all]
+
+options:
+  -h, --help  show this help message and exit
+  --all</pre><h3 id="c-position"><code>position</code></h3><p>positions.</p><pre>usage: gyeol position [-h] {list,add,edit} ...
+
+positional arguments:
+  {list,add,edit}
+
+options:
+  -h, --help       show this help message and exit
+
+usage: gyeol position list [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol position add [-h] [--scope {dept,org}] [--dept-head] code name rank
+
+positional arguments:
+  code
+  name
+  rank
+
+options:
+  -h, --help          show this help message and exit
+  --scope {dept,org}
+  --dept-head
+
+usage: gyeol position edit [-h] [--name NAME] [--rank RANK] [--scope {dept,org}]
+                           [--dept-head {yes,no}] [--active {yes,no}]
+                           code
+
+positional arguments:
+  code
+
+options:
+  -h, --help            show this help message and exit
+  --name NAME
+  --rank RANK
+  --scope {dept,org}
+  --dept-head {yes,no}
+  --active {yes,no}</pre><h3 id="c-org"><code>org</code></h3><p>org chart / find people.</p><pre>usage: gyeol org [-h] [-q Q] [--dept DEPT]
+
+options:
+  -h, --help   show this help message and exit
+  -q Q
+  --dept DEPT</pre><h3 id="c-policy"><code>policy</code></h3><p>per-department approval rules (admin).</p><pre>usage: gyeol policy [-h] {list,show,set,clear,edit,deleg,history,preview} ...
+
+positional arguments:
+  {list,show,set,clear,edit,deleg,history,preview}
+    set                 JSON 파일로 전체 교체
+    clear               규정 해제(자유 결재선)
+    edit                문서종류 하나 수정
+    deleg               대결 규칙
+    preview             누가 결재하나 미리보기
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol policy list [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol policy show [-h] dept
+
+positional arguments:
+  dept
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol policy set [-h] dept file
+
+positional arguments:
+  dept
+  file
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol policy clear [-h] dept
+
+positional arguments:
+  dept
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol policy edit [-h] --type TYPE [--line LINE] [--jeon JEON] [--extra {yes,no}] [--cc CC]
+                         [--off]
+                         dept
+
+positional arguments:
+  dept
+
+options:
+  -h, --help        show this help message and exit
+  --type TYPE
+  --line LINE       예: &#x27;팀장?, 부서장, 대표&#x27; (?=없으면 생략, @아이디=특정인)
+  --jeon JEON       예: &#x27;부서장:100만, 임원:500만&#x27;
+  --extra {yes,no}
+  --cc CC           필수 참조 아이디들
+  --off             이 종류 규정 삭제
+
+usage: gyeol policy deleg [-h] [--allowed {yes,no}] [--same-dept {yes,no}] [--min-pos MIN_POS]
+                          [--max-days MAX_DAYS]
+                          dept
+
+positional arguments:
+  dept
+
+options:
+  -h, --help            show this help message and exit
+  --allowed {yes,no}
+  --same-dept {yes,no}
+  --min-pos MIN_POS
+  --max-days MAX_DAYS
+
+usage: gyeol policy history [-h] dept
+
+positional arguments:
+  dept
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol policy preview [-h] [--dept DEPT] [--drafter DRAFTER] [--type TYPE] [--amount AMOUNT]
+
+options:
+  -h, --help         show this help message and exit
+  --dept DEPT
+  --drafter DRAFTER
+  --type TYPE
+  --amount AMOUNT</pre><h3 id="c-change"><code>change</code></h3><p>two-person approval change requests.</p><pre>usage: gyeol change [-h] {list,approve,reject} ...
+
+positional arguments:
+  {list,approve,reject}
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol change list [-h] [--all]
+
+options:
+  -h, --help  show this help message and exit
+  --all
+
+usage: gyeol change approve [-h] [--password-file PASSWORD_FILE] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  --password-file PASSWORD_FILE
+                        비대화형: 첫 줄이 비밀번호인 파일('-' = 표준입력)
+
+usage: gyeol change reject [-h] [--password-file PASSWORD_FILE] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  --password-file PASSWORD_FILE
+                        비대화형: 첫 줄이 비밀번호인 파일('-' = 표준입력)
+
+usage: gyeol setting list [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol setting set [-h] {two_person,show_contacts,emp_digits,doc_number} value
+
+positional arguments:
+  {two_person,show_contacts,emp_digits,doc_number}
+  value                 on/off, emp_digits 는 2 또는 3, doc_number 는 예: {dept}-{year}-{seq}
+
+options:
+  -h, --help            show this help message and exit</pre><h3 id="c-form"><code>form</code></h3><p>forms: list/show; admins add, copy, edit, disable.</p><pre>usage: gyeol form [-h] {list,show,add,edit,copy,disable,enable,versions,fav} ...
+
+positional arguments:
+  {list,show,add,edit,copy,disable,enable,versions,fav}
+    add                 JSON 파일로 새 양식
+    edit                JSON 파일로 새 버전(기존 문서는 옛 버전 유지)
+    fav                 즐겨찾기 켜기/끄기
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol form list [-h] [--all]
+
+options:
+  -h, --help  show this help message and exit
+  --all       사용 중지 포함(관리자)
+
+usage: gyeol form show [-h] [--version VERSION] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help         show this help message and exit
+  --version VERSION
+
+usage: gyeol form add [-h] code file
+
+positional arguments:
+  code
+  file
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol form edit [-h] code file
+
+positional arguments:
+  code
+  file
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol form copy [-h] [--name NAME] src code
+
+positional arguments:
+  src
+  code
+
+options:
+  -h, --help   show this help message and exit
+  --name NAME
+
+usage: gyeol form disable [-h] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol form enable [-h] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol form versions [-h] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol form fav [-h] [--off] code
+
+positional arguments:
+  code
+
+options:
+  -h, --help  show this help message and exit
+  --off</pre><h3 id="c-smtp"><code>smtp</code></h3><p>outgoing mail relay settings (admin).</p><pre>usage: gyeol smtp [-h] {show,set,test} ...
+
+positional arguments:
+  {show,set,test}
+
+options:
+  -h, --help       show this help message and exit
+
+usage: gyeol smtp show [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol smtp set [-h] [--host HOST] [--port PORT] [--security SECURITY] [--user USER]
+                      [--from-addr FROM_ADDR] [--from-name FROM_NAME]
+                      [--rate-per-hour RATE_PER_HOUR]
+                      [--user-external-per-hour USER_EXTERNAL_PER_HOUR] [--enabled {on,off}]
+                      [--notify-approvals {on,off}] [--allow-external-mail {on,off}]
+                      [--password-stdin]
+
+options:
+  -h, --help            show this help message and exit
+  --host HOST
+  --port PORT
+  --security SECURITY
+  --user USER
+  --from-addr FROM_ADDR
+  --from-name FROM_NAME
+  --rate-per-hour RATE_PER_HOUR
+  --user-external-per-hour USER_EXTERNAL_PER_HOUR
+  --enabled {on,off}
+  --notify-approvals {on,off}
+  --allow-external-mail {on,off}
+  --password-stdin
+
+usage: gyeol smtp test [-h] to
+
+positional arguments:
+  to
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-pin"><code>pin</code></h3><p>pin/unpin a notice (admin).</p><pre>usage: gyeol pin [-h] [--off] post
+
+positional arguments:
+  post
+
+options:
+  -h, --help  show this help message and exit
+  --off</pre><h2>Drafting and approval</h2><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>draft</code></td><td>write a draft (--submit to submit at once)</td></tr><tr><td><code>edit</code></td><td>edit a draft (draft/withdrawn/rejected)</td></tr><tr><td><code>submit</code></td><td>submit</td></tr><tr><td><code>withdraw</code></td><td>withdraw</td></tr><tr><td><code>approve</code></td><td>approve</td></tr><tr><td><code>reject</code></td><td>reject</td></tr><tr><td><code>delegate</code></td><td>delegation (approve on behalf)</td></tr><tr><td><code>list</code></td><td>document boxes</td></tr><tr><td><code>show</code></td><td>show a document</td></tr><tr><td><code>search</code></td><td>search</td></tr><tr><td><code>number</code></td><td>find by document number</td></tr></table><h3 id="c-draft"><code>draft</code></h3><p>write a draft (--submit to submit at once).</p><pre>usage: gyeol draft [-h] --title TITLE [--body BODY] [--body-file BODY_FILE] [--line LINE]
+                   [--type TYPE] [--amount AMOUNT] [--cc CC] [--attach [ATTACH ...]] [--dept-open]
+                   [--submit] [--form FORM] [--field 키=값] [--row 표키:열=값;열=값]
+                   [--fields-json FIELDS_JSON]
+
+options:
+  -h, --help            show this help message and exit
+  --title TITLE
+  --body BODY
+  --body-file BODY_FILE
+  --line LINE           결재선 a,b!,c (&#x27;!&#x27;=전결). 결재규정 부서는 &#x27;추가 결재자&#x27;만
+  --type TYPE           문서 종류 일반/지출/휴가
+  --amount AMOUNT       금액(지출 필수) 예: 150만
+  --cc CC
+  --attach [ATTACH ...]
+  --dept-open           완료 후 부서원 열람 허용
+  --submit
+  --form FORM           양식 코드(gyeoljae form list). 예: expense, leave
+  --field 키=값           양식 항목. 기간은 2026-11-16~2026-11-18
+  --row 표키:열=값;열=값      표 행 추가. 예: items:item=모니터;qty=2;price=30만
+  --fields-json FIELDS_JSON
+                        항목 전체를 JSON 파일로</pre><h3 id="c-edit"><code>edit</code></h3><p>edit a draft (draft/withdrawn/rejected).</p><pre>usage: gyeol edit [-h] [--title TITLE] [--body BODY] [--body-file BODY_FILE] [--line LINE]
+                  [--cc CC] [--attach [ATTACH ...]] [--remove [REMOVE ...]] [--type TYPE]
+                  [--amount AMOUNT] [--field 키=값] [--row 표키:열=값;열=값] [--fields-json FIELDS_JSON]
+                  id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  --title TITLE
+  --body BODY
+  --body-file BODY_FILE
+  --line LINE
+  --cc CC
+  --attach [ATTACH ...]
+  --remove [REMOVE ...]
+  --type TYPE
+  --amount AMOUNT
+  --field 키=값           양식 항목. 기간은 2026-11-16~2026-11-18
+  --row 표키:열=값;열=값      표 행 추가. 예: items:item=모니터;qty=2;price=30만
+  --fields-json FIELDS_JSON
+                        항목 전체를 JSON 파일로</pre><h3 id="c-submit"><code>submit</code></h3><p>submit.</p><pre>usage: gyeol submit [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-withdraw"><code>withdraw</code></h3><p>withdraw.</p><pre>usage: gyeol withdraw [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-approve"><code>approve</code></h3><p>approve.</p><pre>usage: gyeol approve [-h] [-m COMMENT] [--jeon] [--rev REV] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  -m COMMENT, --comment COMMENT
+  --jeon                전결
+  --rev REV             본 문서 버전(show의 rev). 다르면 거부</pre><h3 id="c-reject"><code>reject</code></h3><p>reject.</p><pre>usage: gyeol reject [-h] -m COMMENT [--rev REV] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  -m COMMENT, --comment COMMENT
+  --rev REV</pre><h3 id="c-delegate"><code>delegate</code></h3><p>delegation (approve on behalf).</p><pre>usage: gyeol delegate [-h] {set,list,revoke} ...
+
+positional arguments:
+  {set,list,revoke}
+
+options:
+  -h, --help         show this help message and exit
+
+usage: gyeol delegate set [-h] --to TO [--start START] [--end END] [--from-user FROM_USER]
+
+options:
+  -h, --help            show this help message and exit
+  --to TO
+  --start START
+  --end END
+  --from-user FROM_USER
+
+usage: gyeol delegate list [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol delegate revoke [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-list"><code>list</code></h3><p>document boxes.</p><pre>usage: gyeol list [-h] [--box {inbox,progress,done,rejected,cc,drafts,dept}]
+
+options:
+  -h, --help            show this help message and exit
+  --box {inbox,progress,done,rejected,cc,drafts,dept}</pre><h3 id="c-show"><code>show</code></h3><p>show a document.</p><pre>usage: gyeol show [-h] [--file FILE] [-o OUTPUT] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  --file FILE           첨부 번호 저장
+  -o OUTPUT, --output OUTPUT</pre><h3 id="c-search"><code>search</code></h3><p>search.</p><pre>usage: gyeol search [-h] [-q QUERY] [--title TITLE] [--drafter DRAFTER] [--dept DEPT]
+                    [--status {draft,pending,done,rejected,withdrawn}] [--from DATE_FROM]
+                    [--to DATE_TO] [--number NUMBER] [--type TYPE]
+
+options:
+  -h, --help            show this help message and exit
+  -q QUERY, --query QUERY
+  --title TITLE
+  --drafter DRAFTER
+  --dept DEPT
+  --status {draft,pending,done,rejected,withdrawn}
+  --from DATE_FROM
+  --to DATE_TO
+  --number NUMBER
+  --type TYPE</pre><h3 id="c-number"><code>number</code></h3><p>find by document number.</p><pre>usage: gyeol number [-h] number
+
+positional arguments:
+  number
+
+options:
+  -h, --help  show this help message and exit</pre><h2>Communication and storage</h2><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>home</code></td><td>home screen data (notices, waiting, in progress, done, rejected, messages)</td></tr><tr><td><code>files</code></td><td>file library (company/department files, versions)</td></tr><tr><td><code>folder</code></td><td>my storage (personal folders)</td></tr><tr><td><code>mail</code></td><td>internal mail</td></tr><tr><td><code>board</code></td><td>board</td></tr><tr><td><code>msg</code></td><td>messages</td></tr><tr><td><code>passwd</code></td><td>change own password</td></tr></table><h3 id="c-home"><code>home</code></h3><p>home screen data (notices, waiting, in progress, done, rejected, messages).</p><pre>usage: gyeol home [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-files"><code>files</code></h3><p>file library (company/department files, versions).</p><pre>usage: gyeol files [-h] {list,upload,versions,get,delete} ...
+
+positional arguments:
+  {list,upload,versions,get,delete}
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol files list [-h] [--org] [-q Q]
+
+options:
+  -h, --help  show this help message and exit
+  --org       전사 자료실(기본: 내 부서)
+  -q Q
+
+usage: gyeol files upload [-h] [--org] [--note NOTE] path
+
+positional arguments:
+  path
+
+options:
+  -h, --help   show this help message and exit
+  --org
+  --note NOTE
+
+usage: gyeol files versions [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol files get [-h] [--version VERSION] [-o OUTPUT] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  --version VERSION
+  -o OUTPUT, --output OUTPUT
+
+usage: gyeol files delete [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-folder"><code>folder</code></h3><p>my storage (personal folders).</p><pre>usage: gyeol folder [-h] {list,create,rename,delete,show,add,remove} ...
+
+positional arguments:
+  {list,create,rename,delete,show,add,remove}
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol folder list [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder create [-h] name
+
+positional arguments:
+  name
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder rename [-h] id name
+
+positional arguments:
+  id
+  name
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder delete [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder show [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder add [-h] id doc
+
+positional arguments:
+  id
+  doc
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder remove [-h] id doc
+
+positional arguments:
+  id
+  doc
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-mail"><code>mail</code></h3><p>internal mail.</p><pre>usage: gyeol mail [-h] {list,send,read,reply,replyall,forward,trash,restore,purge,file,flush} ...
+
+positional arguments:
+  {list,send,read,reply,replyall,forward,trash,restore,purge,file,flush}
+    send                받는사람·참조·숨은참조: 아이디, @부서코드, @전체
+    flush               외부 메일 대기열 발송(관리자)
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol mail list [-h] [--folder {inbox,sent,drafts,trash}] [-q Q] [--unread]
+
+options:
+  -h, --help            show this help message and exit
+  --folder {inbox,sent,drafts,trash}
+  -q Q
+  --unread
+
+usage: gyeol mail send [-h] [--to TO] [--cc CC] [--bcc BCC] [--ext EXT] --subject SUBJECT
+                       [--body BODY] [--body-file BODY_FILE] [--attach [ATTACH ...]] [--draft]
+
+options:
+  -h, --help            show this help message and exit
+  --to TO
+  --cc CC
+  --bcc BCC
+  --ext EXT             외부 주소(관리자가 허용한 경우)
+  --subject SUBJECT
+  --body BODY
+  --body-file BODY_FILE
+  --attach [ATTACH ...]
+  --draft               임시보관
+
+usage: gyeol mail read [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol mail reply [-h] [--body BODY] [--to TO] [--cc CC] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help   show this help message and exit
+  --body BODY
+  --to TO
+  --cc CC
+
+usage: gyeol mail replyall [-h] [--body BODY] [--to TO] [--cc CC] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help   show this help message and exit
+  --body BODY
+  --to TO
+  --cc CC
+
+usage: gyeol mail forward [-h] [--body BODY] [--to TO] [--cc CC] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help   show this help message and exit
+  --body BODY
+  --to TO
+  --cc CC
+
+usage: gyeol mail trash [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol mail restore [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol mail purge [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol mail file [-h] [-o OUTPUT] id idx
+
+positional arguments:
+  id
+  idx
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+
+usage: gyeol mail flush [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-board"><code>board</code></h3><p>board.</p><pre>usage: gyeol board [-h] {list,post,read} ...
+
+positional arguments:
+  {list,post,read}
+
+options:
+  -h, --help        show this help message and exit
+
+usage: gyeol board list [-h] [--board {notice,free}]
+
+options:
+  -h, --help            show this help message and exit
+  --board {notice,free}
+
+usage: gyeol board post [-h] [--board {notice,free}] --title TITLE --body BODY
+
+options:
+  -h, --help            show this help message and exit
+  --board {notice,free}
+  --title TITLE
+  --body BODY
+
+usage: gyeol board read [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-msg"><code>msg</code></h3><p>messages.</p><pre>usage: gyeol msg [-h] {list,send,read} ...
+
+positional arguments:
+  {list,send,read}
+
+options:
+  -h, --help        show this help message and exit
+
+usage: gyeol msg list [-h] [--unread] [--sent]
+
+options:
+  -h, --help  show this help message and exit
+  --unread
+  --sent
+
+usage: gyeol msg send [-h] to text
+
+positional arguments:
+  to
+  text
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol msg read [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-passwd"><code>passwd</code></h3><p>change own password.</p><pre>usage: gyeol passwd [-h]
+
+options:
+  -h, --help  show this help message and exit</pre><div class="pn"><a href="troubleshooting.html">&larr; Previous: 8. Troubleshooting and FAQ</a><span></span></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

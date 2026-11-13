@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Troubleshooting - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/troubleshooting.html">한국어</a></div></nav>
+<div class="wrap"><h1>Troubleshooting</h1>
+
+<h2>My browser cannot connect</h2>
+<ol><li>On the server computer open <code>http://127.0.0.1:8130/healthz</code>. If it opens, the server is fine.</li>
+<li>If not, the service is stopped. On Windows start e-approval-kr in <code>services.msc</code>; on Linux run <code>sudo systemctl start e-approval-kr</code>.</li>
+<li>If it opens on the server but not from other PCs, the server may be set to "this computer only". Switch to the office network in <a href="first-setup.html">First setup, step 2</a> and <b>restart the service</b>.</li>
+<li>Still not working: check the firewall (below), that the server address (IP) is right, and that the PC is on the same office network.</li></ol>
+<h2>"Port already in use"</h2>
+<p>Another program (or a second copy of this server) is using port 8130.</p>
+<ul><li>Check whether the server is already running and stop the duplicate.</li>
+<li>Run on another port: <code>e-approval-kr serve --port 8131</code>. If you run it as a service, change the port in the service settings (location varies by version; see the installation notes).</li>
+<li>Find who uses it: Windows <code>netstat -ano | findstr 8130</code>, Linux/macOS <code>sudo lsof -i :8130</code>.</li></ul>
+<h2 id="fw">Firewall</h2>
+<p>For other PCs to connect, the server's firewall must allow port 8130 <b>from the office network only</b>. Never open it to the whole internet.</p>
+<ul><li>Windows: if you ticked the LAN option during installation the rule already exists. To create it yourself (administrator PowerShell):<pre><code>New-NetFirewallRule -DisplayName e-approval-kr -Direction Inbound -Protocol TCP -LocalPort 8130 -RemoteAddress LocalSubnet -Action Allow</code></pre></li>
+<li>Linux (ufw): <code>sudo ufw allow from 192.168.0.0/24 to any port 8130 proto tcp</code> (adjust to your network)</li>
+<li>macOS: check System Settings, Network, Firewall for incoming connections.</li></ul>
+<h2 id="pw">I forgot my password</h2>
+<p>Staff: ask your administrator to reissue a temporary password (<b>Admin → Employees</b>).</p>
+<div class="adm"><b>For administrators: the administrator's own password is lost</b>Reissue it with the CLI on the server (only an operator with access to the data folder can do this).<pre><code>e-approval-kr -u admin emp resetpw admin</code></pre>
+A new temporary password is printed once; you must change it at sign-in. On Linux and macOS service installs use the helper command:
+<pre><code>sudo e-approval-kr-admin -u admin emp resetpw admin</code></pre></div>
+<h2>Where are the logs?</h2>
+<ul><li>Linux: <code>journalctl -u e-approval-kr -e</code></li>
+<li>Windows: service logs are written to a log file in the install folder or the data folder (<code>C:\ProgramData\e-approval-kr</code>). The exact file name may differ by version; open the folder to check.</li>
+<li>macOS: the folder <code>/Library/Logs/e-approval-kr</code>.</li>
+<li>The history of who did what is under <b>Admin → Audit log (감사로그)</b> and in <code>audit.log</code> in the data folder.</li></ul>
+<h2>Warnings during installation</h2>
+<ul><li><b>Windows "protected your PC" window:</b> <b>More info → Run anyway</b>. <a href="install.html#win">Steps</a></li>
+<li><b>macOS "cannot be opened":</b> right-click the file, Open; or Privacy &amp; Security, Open Anyway. <a href="install.html#mac">Steps</a></li></ul>
+<p>These appear because the program is not yet signed with a certificate. Make sure you downloaded it from the official release page before continuing.</p>
+<h2>Other</h2>
+<ul><li>Sign-in is blocked: 5 wrong attempts for one ID (20 from the same PC address) within 10 minutes block sign-in for 10 minutes. Wait and retry, or ask an administrator to reissue the password.</li>
+<li>An attachment will not upload: files must be at most 10 MB each, 30 MB in total, with an allowed extension.</li>
+<li>The screen looks old: hard-refresh the browser with <kbd>Ctrl</kbd>+<kbd>F5</kbd>.</li></ul>
+
+<div class="pn"><a href="security.html">&larr; Previous: 7. Security recommendations</a><a href="cli.html">Next: 9. CLI reference &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

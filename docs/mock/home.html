@@ -1,0 +1,44 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>결재 홈 목업</title><style>*{box-sizing:border-box}:root{--text:#1F2937;--muted:#4B5563;--primary:#1F4E9A;--border:#D5DBE3;--bg:#F5F7FA;--sp:16px}
+body{margin:0;font:15px/1.6 "Noto Sans KR","Malgun Gothic",system-ui,sans-serif;color:var(--text);background:var(--bg)}
+a{color:var(--primary)}a:focus,button:focus{outline:3px solid #FFB000;outline-offset:2px}
+header{height:56px;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:0 16px;position:sticky;top:0}
+header b{font-size:18px}header .sp{flex:1}
+.app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 56px)}
+nav.side{background:#fff;border-right:1px solid var(--border);padding:12px 0}
+nav.side h3{font-size:12px;color:var(--muted);margin:12px 16px 4px}
+nav.side a{display:flex;justify-content:space-between;padding:8px 16px;text-decoration:none;color:var(--text)}
+nav.side a[aria-current]{font-weight:700;background:#E8EEF8;border-left:4px solid var(--primary);padding-left:12px}
+.n{background:var(--primary);color:#fff;border-radius:10px;font-size:12px;padding:0 7px;min-width:20px;text-align:center}
+main{padding:16px;max-width:1100px}h1{font-size:22px;margin:0 0 12px}h2{font-size:16px;margin:0 0 8px}
+.card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.cnt{display:flex;gap:8px;flex-wrap:wrap}.cnt a{flex:1;min-width:90px;text-align:center;padding:10px;background:#fff;border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text)}.cnt b{display:block;font-size:22px}
+table{border-collapse:collapse;width:100%}th{background:#F1F4F8;text-align:left;font-size:13px}th,td{padding:8px;border-bottom:1px solid var(--border)}
+td.t{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{display:inline-block;padding:0 10px;border-radius:12px;font-size:12px;font-weight:700;border:1px solid;line-height:22px}
+.run{background:#FFE9A8;color:#4A3200;border-color:#D9A400}.ok{background:#C9EBCF;color:#0F3D1B;border-color:#3C9A55}
+.rej{background:#FAD0CC;color:#5C0F08;border-color:#C8402F}.wait{background:#E4E8EE;color:#1F2937;border-color:#8A94A6}
+.btn{display:inline-block;min-height:40px;padding:8px 16px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:#fff;text-decoration:none;font-weight:700}
+.btn.danger{background:#B3261E;border-color:#B3261E}.btn.sec{background:#fff;color:var(--text);border-color:#8A94A6}
+.tabs{display:none}
+@media(max-width:767px){.app{display:block}nav.side{display:none}.grid{grid-template-columns:1fr}main{padding:16px 16px 80px}
+.tabs{display:flex;position:fixed;bottom:0;left:0;right:0;height:56px;background:#fff;border-top:1px solid var(--border)}
+.tabs a{flex:1;display:flex;align-items:center;justify-content:center;text-decoration:none;color:var(--text);font-size:13px;min-height:44px}
+.tabs a[aria-current]{font-weight:700;color:var(--primary)}}</style></head><body>
+<a href="#main" style="position:absolute;left:-999px">본문으로 건너뛰기</a>
+<header><b>결재</b><span class="sp"></span><a href="#">쪽지 <span class="n">5</span></a><span>김팀원 ▾</span></header>
+<div class="app"><nav class="side" aria-label="주 메뉴">
+<a href="#" aria-current="page">홈</a><h3>결재</h3><a href="#">결재대기 <span class="n">3</span></a><a href="#">결재진행</a><a href="#">결재완료</a><a href="#">반려 <span class="n">1</span></a><a href="#">참조/열람</a><a href="#" >기안함</a><a href="#">임시저장</a><a href="#">부서문서함</a>
+<h3>소통</h3><a href="#">쪽지</a><a href="#">게시판</a><a href="#">자료실</a><a href="#">조직도</a><h3>기타</h3><a href="#">설정</a><a href="#">관리</a></nav>
+<main id="main">
+<h1>홈</h1><div class="card"><h2>공지</h2>📌 11월 보안 점검 안내 · 연말 휴무 안내</div>
+<div class="cnt" style="margin-top:16px"><a href="#"><b>3</b>결재대기</a><a href="#"><b>2</b>진행</a><a href="#"><b>1</b>반려</a><a href="#"><b>5</b>쪽지</a><a href="#"><b>2</b>참조</a></div>
+<p><a class="btn" href="#">✍ 기안하기</a></p>
+<div class="grid"><section class="card"><h2>결재대기</h2><table><caption style="position:absolute;left:-999px">결재대기</caption><tr><th scope="col">제목</th><th scope="col">기안자</th><th scope="col">상태</th></tr>
+<tr><td class="t">11월 비품 구매 요청 (긴 제목은 한 줄로 말줄임 처리됩니다)</td><td>김팀원</td><td><span class="chip wait">● 대기</span></td></tr>
+<tr><td class="t">출장비 정산</td><td>이대리</td><td><span class="chip rej">지연</span></td></tr></table></section>
+<section class="card"><h2>결재진행</h2><table><tr><th scope="col">제목</th><th scope="col">현재 결재자</th><th scope="col">상태</th></tr><tr><td class="t">휴가 신청</td><td>박부장</td><td><span class="chip run">● 진행</span></td></tr></table></section>
+<section class="card"><h2>결재완료</h2><table><tr><td class="t">장비 구매</td><td><span class="chip ok">✔ 완료</span></td></tr></table></section>
+<section class="card"><h2>반려</h2><table><tr><td class="t">회식비 청구 · 사유: 영수증 누락</td><td><span class="chip rej">✖ 반려</span></td></tr></table></section></div>
+</main></div>
+<nav class="tabs" aria-label="하단 메뉴"><a href="#" aria-current="page">홈</a><a href="#" >결재</a><a href="#">기안</a><a href="#">쪽지</a><a href="#">더보기</a></nav></body></html>

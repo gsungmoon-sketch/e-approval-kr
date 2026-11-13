@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Administrator guide - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/admin.html">한국어</a></div></nav>
+<div class="wrap"><h1>Administrator guide</h1>
+
+<p>When you sign in as an administrator the <b>Admin (관리)</b> menu appears: Employees (사원) / Departments (부서) / Positions and ranks (직위·서열) / Approval rules (규정·전결) / Forms (양식) / Change requests and settings (변경요청·설정) / Outgoing mail (외부 메일) / Audit log (감사로그) (CSV import is at the bottom of the Employees screen).
+Administrators manage staff, rules and audit, but have <b>no right to read other people's document bodies</b>.</p>
+<div class="note"><b>About the CLI</b>Run the commands below on the server computer. The command is <code>e-approval-kr</code> for installed packages and <code>gyeol</code> when installed from source (same program). On <b>Linux and macOS service installs</b> use <code>sudo e-approval-kr-admin command...</code>, which runs as the service account with the right data location (e.g. <code>sudo e-approval-kr-admin -u admin emp list</code>); running the CLI directly as root can leave data files with the wrong owner. On Windows use <b>Admin tool (관리 도구)</b> from the Start menu. <code>-u ID</code> only says who is acting; it is not authentication (so the CLI must be reachable only by operators of the server). Choose the data location with <code>--data</code> or <code>GYEOLJAE_DATA</code>. Every command supports <code>--json</code>.</div>
+
+<h2>1. Order of setup</h2>
+<ol><li>Departments, 2. Positions and ranks, 3. Employees, 4. Approval rules, 5. (optional) adjust forms, 6. outgoing mail.</li></ol>
+<h2>2. Departments</h2>
+<p>Under <b>Admin → Departments (부서)</b> register a department code (letters, e.g. <code>DEV</code>) and a name (e.g. 개발팀). You can rename, disable and re-enable. Disabling keeps existing documents.</p>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin dept add DEV 개발팀
+e-approval-kr -u admin dept list</code></pre></div>
+<h2>3. Positions and ranks</h2>
+<p>A position has a code (lowercase letters first), a name and a rank (its level). Ranks decide who is above whom in approval lines and final-approval limits. Add or edit them to fit your company. Granting a department-head-level position can require two-person approval (<a href="#two">below</a>).</p>
+<h2>4. Employees</h2>
+<p>Under <b>Admin → Employees (사원)</b> you add and edit staff, move departments, change positions, and set active / on leave / retired.</p>
+<ul><li>If you leave the <b>employee number</b> empty it is issued automatically (hire date YYMMDD plus a serial number, e.g. hired 2026-11-13 gives <code>26111301</code>). The default sign-in ID is the employee number.</li>
+<li>The <b>temporary password</b> is shown <b>only once</b> when you add the person. Pass it on right away; the employee changes it at first sign-in.</li>
+<li>Setting someone to <b>retired</b> blocks sign-in; documents and records are kept.</li>
+<li><b>Bulk CSV import:</b> use the import function on the employee screen. Column names: 사번 (employee no.), 이름 (name), 부서 (department), 직위 (position), 아이디 (ID), 이메일 (email), 전화 (phone), 입사일 (hire date), 상태 (status), 직책 (title). Check the <b>preview</b> for errors first, then apply. UTF-8 and Excel (CP949) files both work. Export is also available.</li>
+<li><b>Password reissue:</b> create a new temporary password from the employee screen or the CLI.</li></ul>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin emp add --name 홍길동 --dept DEV --position 팀원 --hired 2026-11-13
+e-approval-kr -u admin emp import staff.csv           # preview
+e-approval-kr -u admin emp import staff.csv --apply   # apply
+e-approval-kr -u admin emp resetpw 26111301
+e-approval-kr -u admin emp retire 26111301
+e-approval-kr -u admin setting set emp_digits 3     # 3-digit serial in new numbers</code></pre></div>
+<h2 id="policy">5. Approval rules (per department)</h2>
+<p>Under <b>Admin → Approval rules (규정·전결)</b> set rules for each department and document type (general 일반 / expense 지출 / leave 휴가). A department with no rule uses a "free approval line" where the drafter builds the line.</p>
+<table><tr><th>Item</th><th>Meaning</th></tr>
+<tr><td>Approval line</td><td>Positions in order, e.g. <code>팀장?, 부서장, 대표</code>. A question mark (<code>?</code>) means "skip if nobody holds this position"; <code>@ID</code> names a specific person.</td></tr>
+<tr><td>Final-approval limit (전결)</td><td>Amount limit per position, e.g. <code>부서장:100만, 임원:500만</code> (만 = 10,000 won). If the amount is at or below the limit, approval ends at that position.</td></tr>
+<tr><td>Allow extra approvers</td><td>Whether the drafter may add more people to the line (yes/no).</td></tr>
+<tr><td>Required CC</td><td>People (IDs) who must always be copied, e.g. HR.</td></tr>
+<tr><td>Delegation rules</td><td>Whether delegation is allowed, same department only, minimum position of the delegate, maximum days.</td></tr></table>
+<ul><li>Rules are <b>versioned</b>. A change applies to new submissions; documents in progress keep the rule they were submitted under.</li>
+<li>Use <b>preview</b> to see "who approves for this department, type and amount" before applying.</li>
+<li>The amount comes automatically from the form's money field (table total).</li></ul>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin policy edit DEV --type 지출 --line "팀장?, 부서장, 대표" --jeon "부서장:100만" --cc hr
+e-approval-kr -u admin policy deleg DEV --allowed yes --same-dept yes --max-days 14
+e-approval-kr -u admin policy preview --dept DEV --type 지출 --amount 150만
+e-approval-kr -u admin policy show DEV ; e-approval-kr -u admin policy history DEV
+e-approval-kr -u admin policy clear DEV      # remove rules (free approval line)</code></pre>
+<code>--type</code> takes the Korean type names shown by <code>policy show</code> (일반, 지출, 휴가).</div>
+<h2 id="forms">6. Managing forms</h2>
+<p>Under <b>Admin → Forms (양식)</b> you can list forms, create, copy, edit and disable them. It is easiest to copy one of the 10 built-in forms and change the copy.</p>
+<h3>Form properties</h3>
+<table><tr><th>Property</th><th>Description</th></tr>
+<tr><td>Name, code</td><td>The code starts with a lowercase letter (e.g. <code>hr_memo</code>).</td></tr>
+<tr><td>Category</td><td>일반 (general) / 보고 (report) / 재정 (finance) / 인사 (HR) / 대외 (external)</td></tr>
+<tr><td>Approval type (doc_type)</td><td>general / expense / leave &mdash; decides which approval rule applies</td></tr>
+<tr><td>Retention</td><td>1년 / 3년 / 5년 / 10년 / 준영구 (quasi-permanent) / 영구 (permanent)</td></tr>
+<tr><td>Departments allowed</td><td>Empty means all departments</td></tr>
+<tr><td>Required CC departments</td><td>That department's head is copied automatically</td></tr>
+<tr><td>Document number prefix</td><td>Up to 8 letters/digits/Hangul; empty uses the department code</td></tr></table>
+<h3>Field types</h3>
+<table><tr><th>type</th><th>On screen</th><th>Notes</th></tr>
+<tr><td><code>text</code></td><td>One-line text (한 줄 글)</td><td><code>max</code> characters (default 200)</td></tr>
+<tr><td><code>textarea</code></td><td>Multi-line text (여러 줄 글)</td><td><code>max</code> default 2000, up to 4000</td></tr>
+<tr><td><code>number</code></td><td>Number (숫자)</td><td></td></tr>
+<tr><td><code>money</code></td><td>Amount (금액)</td><td>The form's total amount is used for final-approval limits.</td></tr>
+<tr><td><code>date</code></td><td>Date (날짜)</td><td></td></tr>
+<tr><td><code>daterange</code></td><td>Period (기간)</td><td><code>workdays:true</code> counts working days only; <code>half_field</code> makes a half day 0.5</td></tr>
+<tr><td><code>select</code></td><td>Choice (선택)</td><td><code>options</code> list (no duplicates, up to 30)</td></tr>
+<tr><td><code>table</code></td><td>Table with repeating rows (표)</td><td><code>columns</code> (up to 8; column types text, number, money), calculated column <code>"calc":"qty*price"</code>, totals <code>"sum":["amount"]</code></td></tr>
+<tr><td><code>file</code></td><td>Attachment required (첨부 필수)</td><td><code>min_files</code> minimum number of files</td></tr></table>
+<p>A form can have up to 30 fields. A field key starts with a lowercase letter and is at most 24 characters. Common properties: <code>key</code>, <code>label</code>, <code>required</code>, <code>help</code>.</p>
+<h3>JSON example</h3>
+<pre><code>{
+  "name": "교육 신청서",
+  "category": "인사",
+  "doc_type": "general",
+  "retention": "3년",
+  "prefix": "EDU",
+  "fields": [
+    {"key": "course", "label": "교육명", "type": "text", "required": true},
+    {"key": "period", "label": "교육 기간", "type": "daterange", "required": true},
+    {"key": "kind", "label": "구분", "type": "select", "options": ["사내", "사외"]},
+    {"key": "items", "label": "비용 내역", "type": "table",
+     "columns": [
+       {"key": "item", "label": "항목", "type": "text"},
+       {"key": "qty", "label": "수량", "type": "number"},
+       {"key": "price", "label": "단가", "type": "money"},
+       {"key": "amount", "label": "금액", "type": "money", "calc": "qty*price"}],
+     "sum": ["amount"]},
+    {"key": "proof", "label": "신청서 첨부", "type": "file", "min_files": 1}
+  ]
+}</code></pre>
+<p>The web form editor works with the same structure (screen details may differ between versions).</p>
+<h3>Versions</h3>
+<p>Editing a form creates a <b>new version</b>. Documents already drafted keep the version they were written with. Do not delete forms you no longer need; <b>disable</b> them.</p>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin form list
+e-approval-kr -u admin form copy general hr_memo --name "인사 품의"
+e-approval-kr -u admin form edit hr_memo definition.json    # new version
+e-approval-kr -u admin form add edu definition.json</code></pre></div>
+<h2>7. Document number format</h2>
+<p>The number is issued at final approval, so there are no gaps. Default: <code>{dept}-{year}-{seq}</code> (e.g. DEV-2026-0001).
+Placeholders: <code>{dept}</code> department code, <code>{year}</code> four-digit year, <code>{yy}</code> two-digit year, <code>{prefix}</code> form prefix (department code if none), <code>{seq}</code> serial number.</p>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin setting list
+e-approval-kr -u admin setting set doc_number "{prefix}-{year}-{seq}"
+e-approval-kr -u admin setting set show_contacts on   # show email/phone in the org chart</code></pre>
+<code>setting list</code> shows the current format string. <b>Free-form drafts</b> (without a form) are off by default: while any form is enabled, every draft must start from a form, so an expense cannot be filed as a general document to dodge the 전결 limit. Turn on only if needed: <code>setting set allow_freeform on</code>. A new format applies to documents completed <b>from then on</b>; numbers already issued do not change.</div>
+<h2 id="two">8. Two-person approval</h2>
+<p>When on, important changes such as approval-rule changes, granting administrator rights, and granting department-head-level positions only take effect after <b>another administrator approves</b>. This guards against one person's mistake or misuse. Turn it on when you have two or more administrators.
+Pending items appear under <b>Admin → Change requests and settings (변경요청·설정)</b>, where another administrator approves or rejects them.</p>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin setting set two_person on
+e-approval-kr -u admin2 change list
+e-approval-kr -u admin2 change approve &lt;id&gt;   # asks for your own password in a terminal
+e-approval-kr -u admin2 change approve &lt;id&gt; --password-file pw.txt   # for scripts (first line = password, '-' = stdin)</code></pre>The requester cannot approve their own request; only <b>another administrator</b> can. On the CLI that administrator must enter their own password to approve or reject. Two-person approval cannot be switched on with fewer than two administrators.</div>
+<h2 id="smtp">9. Outgoing mail (SMTP)</h2>
+<p>It is <b>off</b> by default. When on, approval-arrived / completed / rejected notices are emailed to the address in each employee's record. Sending internal mail to outside addresses must be allowed separately and has hourly limits. There is no incoming mail server feature (sending only).</p>
+<ol><li>Open <b>Admin → Outgoing mail (외부 메일)</b>.</li><li>Enter your mail provider's SMTP server, port (e.g. 587), security (STARTTLS), user name, password and sender address. Google Workspace needs an app password.</li>
+<li>Use the test send (시험 발송) to check, then switch it on.</li></ol>
+<div class="warn"><b>Warning</b>The SMTP password is stored in <code>smtp.json</code> in the data folder. Keep the data folder and backup files away from unauthorized people.</div>
+<div class="adm"><b>For administrators</b><pre><code>echo 'app-password' | e-approval-kr -u admin smtp set --host smtp.example.com --port 587 --security starttls \
+   --user mailer@example.com --from-addr mailer@example.com --from-name Approval --password-stdin --enabled on --notify-approvals on
+e-approval-kr -u admin smtp test someone@example.com   # sends one test mail
+e-approval-kr -u admin mail flush      # send the queue now (the web server also sends every 30 seconds)</code></pre>
+With <code>--allow-external-mail on</code> internal mail may also be sent to outside addresses (hourly limits: <code>--rate-per-hour</code>, <code>--user-external-per-hour</code>).</div>
+<h2 id="audit">10. Audit log and verification</h2>
+<p>Under <b>Admin → Audit log (감사로그)</b> every state change (submit, approve, reject, permission changes, ...) is recorded in a hash chain. Completed documents also get a content hash, so secret edits show up in verification.</p>
+<ul><li>Run verification regularly (for example monthly).</li>
+<li>For stronger protection store the "chain head" <b>somewhere else</b> (another PC, email, paper). This even catches someone with write access to the data folder rebuilding the whole chain. See <a href="backup.html#head">Backup and restore</a>.</li></ul>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr -u admin verify-audit
+e-approval-kr export-audit-head
+e-approval-kr -u admin audit --help</code></pre></div>
+
+<div class="pn"><a href="first-setup.html">&larr; Previous: 3. First-run setup</a><a href="user.html">Next: 5. User guide &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

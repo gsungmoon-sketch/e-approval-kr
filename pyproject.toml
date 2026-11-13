@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gyeoljae"
+version = "0.1.0"
+description = "Korean-style e-approval (전자결재) system — approval lines, 전결/대결, forms, mail, files. Python stdlib, Windows/Linux/macOS."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = []
+classifiers = ["Programming Language :: Python :: 3", "License :: OSI Approved :: MIT License",
+               "Operating System :: OS Independent", "Natural Language :: Korean"]
+
+[project.urls]
+Homepage = "https://github.com/gsungmoon-sketch/e-approval-kr"
+Issues = "https://github.com/gsungmoon-sketch/e-approval-kr/issues"
+Source = "https://github.com/gsungmoon-sketch/e-approval-kr"
+
+[project.scripts]
+gyeol = "gyeoljae.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

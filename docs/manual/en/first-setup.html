@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>First setup wizard - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/first-setup.html">한국어</a></div></nav>
+<div class="wrap"><h1>First setup wizard</h1>
+
+<p>After installation your browser opens <code>http://127.0.0.1:8130/setup</code>. If it does not, type the address yourself.
+Setup can only be done on <b>the computer where the server is installed</b>; other PCs are blocked for safety.</p>
+
+<h2>Step 1. Create the first administrator</h2>
+<ol><li>Enter an <b>ID</b> (for example <code>admin</code>), a <b>name</b> (for example 관리자), and a <b>password</b>.</li>
+<li>Choose a long password that is hard to guess and keep it somewhere safe. If you lose it, an administrator must <a href="troubleshooting.html#pw">reissue it with the CLI</a>.</li></ol>
+<h2>Step 2. Who can connect (bind address)</h2>
+<table><tr><th>Choice</th><th>Meaning</th><th>When</th></tr>
+<tr><td><b>This computer only</b> (127.0.0.1)</td><td>Only a browser on this computer can connect.</td><td>Alone, or testing. Default and safest.</td></tr>
+<tr><td><b>Office network (LAN)</b> (0.0.0.0)</td><td>Other PCs on the same office network can connect.</td><td>When staff share the server.</td></tr></table>
+<div class="warn"><b>Warning</b>The wizard shows a warning when you choose the LAN. Plain HTTP can be read by other people on the same network, so put an <a href="#https">HTTPS reverse proxy</a> in front. Opening the server directly to the internet (router port forwarding) is not recommended.</div>
+<p>After changing the bind address, <b>restart the service</b> for it to take effect.</p>
+<ul><li>Windows: open Services (Win+R, <code>services.msc</code>), right-click <b>e-approval-kr</b>, Restart.</li>
+<li>macOS: restart the Mac or use the <a href="install.html#mac">launchctl commands</a>.</li>
+<li>Linux: <code>sudo systemctl restart e-approval-kr</code></li></ul>
+<h2>Step 3. Choose a backup folder</h2>
+<p>Pick the folder where backups are stored. A backup is made automatically once a day and the latest <b>14</b> are kept (older ones are removed). The first backup is made right when setup finishes (you get an error if the folder is not writable).
+Choose a folder on a <b>different disk</b> from the server if you can (external drive, network storage); if the server disk fails, backups on the same disk are lost with it.
+See <a href="backup.html">Backup and restore</a>.</p>
+<h2 id="wizard-details">Wizard fields and where they are stored</h2>
+<table><tr><th>Field</th><th>Notes</th></tr>
+<tr><td>Administrator ID, name, password</td><td>Password: 8 characters or more, typed twice.</td></tr>
+<tr><td>Admin department code and name</td><td>The department the first administrator belongs to (default <code>ADM</code> / 관리부). Can be changed later.</td></tr>
+<tr><td>Who can connect, port</td><td>This computer only (<code>127.0.0.1</code>) / office network (<code>0.0.0.0</code>); default port 8130.</td></tr>
+<tr><td>Backup folder</td><td>Empty means no automatic backup.</td></tr></table>
+<ul><li>Bind address, port and backup folder are saved in <code>server.json</code> in the data folder (<code>host</code>, <code>port</code>, <code>backup_dir</code>, <code>backup_keep</code>). <code>serve</code> without options reads it. <code>serve --host ... --port ...</code> on the command line wins.</li>
+<li>When setup is finished the <code>/setup</code> address turns into the sign-in page (it never opens again once a user exists). <code>http://127.0.0.1:8130/healthz</code> returns <code>{"ok": true, "version": "..."}</code> at any time (useful for monitoring).</li>
+<li>On Linux, if you used <code>--lan</code> or <code>--port</code> at install time, the service drop-in <code>listen.conf</code> overrides <code>server.json</code>. To use <code>server.json</code> again delete <code>/etc/systemd/system/e-approval-kr.service.d/listen.conf</code> and run <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart e-approval-kr</code>.</li>
+<li>Opening <code>/setup</code> from another PC only shows a notice to open it on the server computer.</li></ul>
+
+<h2 id="wizard-details">Wizard fields and where they are stored</h2>
+<table><tr><th>Field</th><th>Notes</th></tr>
+<tr><td>Administrator ID, name, password</td><td>Password: 8 characters or more, typed twice.</td></tr>
+<tr><td>Admin department code and name</td><td>The department the first administrator belongs to (default <code>ADM</code> / 관리부). Can be changed later.</td></tr>
+<tr><td>Who can connect, port</td><td>This computer only (<code>127.0.0.1</code>) / office network (<code>0.0.0.0</code>); default port 8130.</td></tr>
+<tr><td>Backup folder</td><td>Empty means no automatic backup.</td></tr></table>
+<ul><li>Bind address, port and backup folder are saved in <code>server.json</code> in the data folder (<code>host</code>, <code>port</code>, <code>backup_dir</code>, <code>backup_keep</code>). <code>serve</code> without options reads it. <code>serve --host ... --port ...</code> on the command line wins.</li>
+<li>When setup is finished the <code>/setup</code> address turns into the sign-in page (it never opens again once a user exists). <code>http://127.0.0.1:8130/healthz</code> returns <code>{"ok": true, "version": "..."}</code> at any time (useful for monitoring).</li>
+<li>On Linux, if you used <code>--lan</code> or <code>--port</code> at install time, the service drop-in <code>listen.conf</code> overrides <code>server.json</code>. To use <code>server.json</code> again delete <code>/etc/systemd/system/e-approval-kr.service.d/listen.conf</code> and run <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart e-approval-kr</code>.</li>
+<li>Opening <code>/setup</code> from another PC only shows a notice to open it on the server computer.</li></ul>
+
+<h2 id="wizard-details">Wizard fields and where they are stored</h2>
+<table><tr><th>Field</th><th>Notes</th></tr>
+<tr><td>Administrator ID, name, password</td><td>Password: 8 characters or more, typed twice.</td></tr>
+<tr><td>Admin department code and name</td><td>The department the first administrator belongs to (default <code>ADM</code> / 관리부). Can be changed later.</td></tr>
+<tr><td>Who can connect, port</td><td>This computer only (<code>127.0.0.1</code>) / office network (<code>0.0.0.0</code>); default port 8130.</td></tr>
+<tr><td>Backup folder</td><td>Empty means no automatic backup.</td></tr></table>
+<ul><li>Bind address, port and backup folder are saved in <code>server.json</code> in the data folder (<code>host</code>, <code>port</code>, <code>backup_dir</code>, <code>backup_keep</code>). <code>serve</code> without options reads it. <code>serve --host ... --port ...</code> on the command line wins.</li>
+<li>When setup is finished the <code>/setup</code> address turns into the sign-in page (it never opens again once a user exists). <code>http://127.0.0.1:8130/healthz</code> returns <code>{"ok": true, "version": "..."}</code> at any time (useful for monitoring).</li>
+<li>On Linux, if you used <code>--lan</code> or <code>--port</code> at install time, the service drop-in <code>listen.conf</code> overrides <code>server.json</code>. To use <code>server.json</code> again delete <code>/etc/systemd/system/e-approval-kr.service.d/listen.conf</code> and run <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart e-approval-kr</code>.</li>
+<li>Opening <code>/setup</code> from another PC only shows a notice to open it on the server computer.</li></ul>
+
+<h2>Step 4. Finish and sign in</h2>
+<p>When the wizard ends you go to the sign-in page. Sign in with the administrator you just created and prepare your organization:</p>
+<ol><li><b>관리 (Admin) → 부서 (Departments)</b>: add departments</li><li><b>직위·서열 (Positions and ranks)</b>: review (defaults exist and can be edited)</li><li><b>사원 (Employees)</b>: add staff, or import a CSV</li><li><b>규정·전결 (Approval rules)</b>: set each department's approval line</li></ol>
+<p>Details are in the <a href="admin.html">Administrator guide</a>.</p>
+<div class="adm"><b>For administrators: setup without the wizard</b>
+<pre><code>echo 'your-password-here' &gt; pw.txt
+e-approval-kr setup --admin-id admin --admin-name 관리자 --password-file pw.txt
+# delete pw.txt right after use
+e-approval-kr serve --host 127.0.0.1 --port 8130</code></pre>
+<p>Use <code>--host 0.0.0.0</code> to allow other PCs. In service installs the address is part of the service configuration, so change it with the wizard (or the configuration file) and restart the service. Health check: <code>GET /healthz</code>.</p>
+<p><b>Setting up when the server has no screen:</b> connect with SSH or remote desktop and open <code>127.0.0.1:8130/setup</code> in a browser on the server, or use the CLI method above.</p></div>
+
+<h2 id="https">Publishing safely with HTTPS</h2>
+<p>If staff connect over the office network or from outside (home, mobile), put an <b>HTTPS reverse proxy</b> in front. The proxy handles encryption; e-approval-kr keeps listening on <code>127.0.0.1:8130</code>.</p>
+<div class="adm"><b>For administrators: Caddy example</b>
+<ol><li>Point a domain (for example <code>approval.example.com</code>) at the server and open ports 80 and 443.</li>
+<li>Set the environment variables <code>GYEOLJAE_TRUST_PROXY=1</code> and <code>GYEOLJAE_COOKIE_SECURE=1</code>. Enable them <b>only behind a proxy</b>; on a directly exposed server they let attackers fake their IP and bypass login limits.</li>
+<li>Caddyfile:<pre><code>approval.example.com {
+    reverse_proxy 127.0.0.1:8130
+}</code></pre>See also <code>deploy/caddy/Caddyfile</code> in the repository. Caddy obtains the certificate automatically.</li></ol>
+<p>Alternatives: Cloudflare Tunnel (no port forwarding), or the server's own HTTPS (<code>serve --https cert.pem key.pem</code>). See <code>docs/DEPLOY.md</code>.</p></div>
+
+<div class="pn"><a href="install.html">&larr; Previous: 2. Installation</a><a href="admin.html">Next: 4. Administrator guide &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

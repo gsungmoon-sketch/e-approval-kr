@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>e-approval-kr @VERSION@</title>
+    <organization>com.e-approval-kr</organization>
+    <license file="LICENSE.txt"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="never" require-scripts="true" rootVolumeOnly="true" hostArchitectures="@HOSTARCH@"/>
+    <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
+    <volume-check>
+        <allowed-os-versions><os-version min="@MINOS@"/></allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="default"><line choice="com.e-approval-kr.server"/></line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.e-approval-kr.server" visible="false">
+        <pkg-ref id="com.e-approval-kr.server"/>
+    </choice>
+    <pkg-ref id="com.e-approval-kr.server" version="@VERSION@" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

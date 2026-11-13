@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Installation - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/install.html">한국어</a></div></nav>
+<div class="wrap"><h1>Installation</h1>
+
+<p>Install the server on one computer. Staff then open it in a web browser on their own PCs; nothing needs to be installed on their machines.</p>
+<div class="note"><b>Which one?</b>
+Windows office PC: <a href="#win">Windows</a> / Mac: <a href="#mac">macOS</a> / server machine: <a href="#linux">Linux</a> /
+already have Python: <a href="#pyz">pyz</a> / containers: <a href="#docker">Docker</a></div>
+
+<h2 id="download">Download and verify</h2>
+<ol><li>From the official releases page <a href="https://github.com/gsungmoon-sketch/e-approval-kr/releases">github.com/gsungmoon-sketch/e-approval-kr/releases</a> download the installer for the latest version together with the <code>SHA256SUMS</code> file.</li>
+<li>Compare the hash to be sure the file is not damaged or tampered with. The printed hash must equal the line for that file in <code>SHA256SUMS</code>.
+<pre><code># Linux
+sha256sum -c --ignore-missing SHA256SUMS
+# macOS
+shasum -a 256 e-approval-kr-&lt;version&gt;-macos-arm64.pkg
+# Windows (PowerShell)
+Get-FileHash .\e-approval-kr-setup-&lt;version&gt;-win-x64.exe -Algorithm SHA256</code></pre></li>
+<li>If they differ, do not install; download again.</li></ol>
+<div class="note"><b>Unsigned installers</b>The installers are not yet code-signed (Windows) or notarized (macOS), so the operating system shows a warning. The hash check above is how you confirm the file is genuine. File names look like <code>e-approval-kr-&lt;version&gt;-&lt;os&gt;-&lt;x64|arm64&gt;</code>.</div>
+<div class="note"><b>Status of the installers</b>Install paths (folders, service names) in this manual follow the packaging plan. If the notes of an actual release differ, the release notes win.</div>
+
+<h2 id="download">Download and verify</h2>
+<ol><li>From the official releases page <a href="https://github.com/gsungmoon-sketch/e-approval-kr/releases">github.com/gsungmoon-sketch/e-approval-kr/releases</a> download the installer for the latest version together with the <code>SHA256SUMS</code> file.</li>
+<li>Compare the hash to be sure the file is not damaged or tampered with. The printed hash must equal the line for that file in <code>SHA256SUMS</code>.
+<pre><code># Linux
+sha256sum -c --ignore-missing SHA256SUMS
+# macOS
+shasum -a 256 e-approval-kr-&lt;version&gt;-macos-arm64.pkg
+# Windows (PowerShell)
+Get-FileHash .\e-approval-kr-setup-&lt;version&gt;-win-x64.exe -Algorithm SHA256</code></pre></li>
+<li>If they differ, do not install; download again.</li></ol>
+<div class="note"><b>Unsigned installers</b>The installers are not yet code-signed (Windows) or notarized (macOS), so the operating system shows a warning. The hash check above is how you confirm the file is genuine. File names look like <code>e-approval-kr-&lt;version&gt;-&lt;os&gt;-&lt;x64|arm64&gt;</code>.</div>
+<div class="note"><b>Status of the installers</b>Install paths (folders, service names) in this manual follow the packaging plan. If the notes of an actual release differ, the release notes win.</div>
+
+<h2 id="download">Download and verify</h2>
+<ol><li>From the official releases page <a href="https://github.com/gsungmoon-sketch/e-approval-kr/releases">github.com/gsungmoon-sketch/e-approval-kr/releases</a> download the installer for the latest version together with the <code>SHA256SUMS</code> file.</li>
+<li>Compare the hash to be sure the file is not damaged or tampered with. The printed hash must equal the line for that file in <code>SHA256SUMS</code>.
+<pre><code># Linux
+sha256sum -c --ignore-missing SHA256SUMS
+# macOS
+shasum -a 256 e-approval-kr-&lt;version&gt;-macos-arm64.pkg
+# Windows (PowerShell)
+Get-FileHash .\e-approval-kr-setup-&lt;version&gt;-win-x64.exe -Algorithm SHA256</code></pre></li>
+<li>If they differ, do not install; download again.</li></ol>
+<div class="note"><b>Unsigned installers</b>The installers are not yet code-signed (Windows) or notarized (macOS), so the operating system shows a warning. The hash check above is how you confirm the file is genuine. File names look like <code>e-approval-kr-&lt;version&gt;-&lt;os&gt;-&lt;x64|arm64&gt;</code>.</div>
+<div class="note"><b>Status of the installers</b>Install paths (folders, service names) in this manual follow the packaging plan. If the notes of an actual release differ, the release notes win.</div>
+
+<h2 id="download">Download and verify</h2>
+<ol><li>From the official releases page <a href="https://github.com/gsungmoon-sketch/e-approval-kr/releases">github.com/gsungmoon-sketch/e-approval-kr/releases</a> download the installer for the latest version together with the <code>SHA256SUMS</code> file.</li>
+<li>Compare the hash to be sure the file is not damaged or tampered with. The printed hash must equal the line for that file in <code>SHA256SUMS</code>.
+<pre><code># Linux
+sha256sum -c --ignore-missing SHA256SUMS
+# macOS
+shasum -a 256 e-approval-kr-&lt;version&gt;-macos-arm64.pkg
+# Windows (PowerShell)
+Get-FileHash .\e-approval-kr-setup-&lt;version&gt;-win-x64.exe -Algorithm SHA256</code></pre></li>
+<li>If they differ, do not install; download again.</li></ol>
+<div class="note"><b>Unsigned installers</b>The installers are not yet code-signed (Windows) or notarized (macOS), so the operating system shows a warning. The hash check above is how you confirm the file is genuine. File names look like <code>e-approval-kr-&lt;version&gt;-&lt;os&gt;-&lt;x64|arm64&gt;</code>.</div>
+<div class="note"><b>Status of the installers</b>Install paths (folders, service names) in this manual follow the packaging plan. If the notes of an actual release differ, the release notes win.</div>
+
+<h2 id="win">Windows</h2>
+<p>File: <code>e-approval-kr-setup-&lt;version&gt;-win-x64.exe</code> (64-bit Windows)</p>
+<ol>
+<li>Double-click the downloaded file.</li>
+<li>A blue "Windows protected your PC" window may appear. This happens because the installer is not code-signed yet. Click <b>More info</b>, then click the <b>Run anyway</b> button that appears (on a Korean Windows: 추가 정보 → 실행).</li>
+<li>If asked to allow changes to your device, click <b>Yes</b> (administrator rights are needed).</li>
+<li>Click <b>Next</b> through the wizard. The program goes to <code>C:\Program Files\e-approval-kr</code>; your data (documents, attachments, staff records) goes to <code>C:\ProgramData\e-approval-kr</code>.</li>
+<li>If you see an option to allow access from the office network (a firewall rule), tick it only if other PCs must connect. Leave it unticked if only this PC will use the server.</li>
+<li>Click <b>Install</b>, then <b>Finish</b>. The server is registered as a Windows service and starts automatically when the PC starts.</li>
+<li>Your browser opens <code>http://127.0.0.1:8130/setup</code>. Continue with <a href="first-setup.html">First setup</a>.</li>
+</ol>
+<p>Three Start menu shortcuts are added:</p>
+<table><tr><th>Name</th><th>What it does</th></tr>
+<tr><td>서버 열기 (Open server)</td><td>Opens the approval screen in your browser.</td></tr>
+<tr><td>관리 도구 (Admin tools)</td><td>Opens a command window for the administrator CLI.</td></tr>
+<tr><td>설명서 (Manual)</td><td>Opens this manual.</td></tr></table>
+<p><b>Uninstall:</b> Settings, Apps, <b>e-approval-kr</b>, Uninstall. Your <b>data is kept</b>. To remove the data as well, tick <b>데이터도 삭제</b> ("also delete data") during uninstall. That cannot be undone, so <a href="backup.html">back up</a> first.</p>
+
+<h2 id="mac">macOS</h2>
+<p>File: a <code>.pkg</code>. Use <b>arm64</b> for Apple silicon Macs (M1 and later) and <b>x86_64</b> for Intel Macs (check under Apple menu, About This Mac).</p>
+<ol>
+<li>Double-click the <code>.pkg</code>. Because it is not signed, macOS says it cannot be opened.</li>
+<li>Option 1 (macOS 14 and earlier): <b>right-click (or Control-click) the file, choose Open</b>, then click <b>Open</b> in the dialog. The warning says "unidentified developer" (확인되지 않은 개발자).</li>
+<li>Option 2 (all versions; the only way on macOS 15 Sequoia and later): first try to open the <code>.pkg</code> once so the block message appears, then open System Settings, <b>Privacy &amp; Security</b>, and in the "Security" section click <b>Open Anyway</b>. You are asked for your login password.</li>
+<li>Click <b>Continue</b> and <b>Install</b>, and enter your Mac login password.</li>
+<li>The program is installed in <code>/usr/local/lib/e-approval-kr</code> and the server (LaunchDaemon <code>com.e-approval-kr.server</code>) starts automatically. Data is stored in <code>/Library/Application Support/e-approval-kr</code>.</li>
+<li>Open <code>http://127.0.0.1:8130/setup</code> in a browser and continue with <a href="first-setup.html">First setup</a>.</li>
+</ol>
+<div class="adm"><b>For administrators</b>Stop / start the server:<pre><code>sudo launchctl unload /Library/LaunchDaemons/com.e-approval-kr.server.plist
+sudo launchctl load -w /Library/LaunchDaemons/com.e-approval-kr.server.plist</code></pre>
+Logs are in <code>/Library/Logs/e-approval-kr</code>. For administration use <code>sudo e-approval-kr-admin ...</code> (runs as the service account <code>_eapprovalkr</code>). Uninstall with <code>sudo /usr/local/lib/e-approval-kr/uninstall.sh</code>.</div>
+
+<h2 id="linux">Linux</h2>
+<p>File: <code>e-approval-kr-&lt;version&gt;-linux-x64.tar.gz</code></p>
+<div class="adm"><b>For administrators</b><pre><code>tar xzf e-approval-kr-&lt;version&gt;-linux-x64.tar.gz
+cd e-approval-kr-&lt;version&gt;-linux-x64
+sudo ./install.sh          # reachable from this machine only (default)
+sudo ./install.sh --lan    # reachable from the office network (0.0.0.0)</code></pre></div>
+<ul>
+<li>A system user <code>e-approval-kr</code> is created.</li>
+<li>Program: <code>/opt/e-approval-kr</code> / data: <code>/var/lib/e-approval-kr</code> / service: <code>e-approval-kr.service</code> (systemd, starts at boot).</li>
+<li>Status: <code>systemctl status e-approval-kr</code> / logs: <code>journalctl -u e-approval-kr -e</code></li>
+<li>Afterwards open <code>http://127.0.0.1:8130/setup</code> in a browser. If the server has no screen, see "Setting up when the server has no screen" in <a href="first-setup.html">First setup</a>.</li>
+<li>For administration (CLI) use <code>sudo e-approval-kr-admin ...</code> (runs as the service account). To create the first administrator without a screen: <code>sudo e-approval-kr-admin setup</code>. Options: <code>--port N</code>, <code>--no-start</code>. <code>--lan</code> opens the port in ufw (if active) only for private subnets (10.x, 172.16-31.x, 192.168.x).</li>
+<li>Works on x86_64 Linux with glibc 2.35 or newer; Python is not needed. Running <code>install.sh</code> again from a newer tarball upgrades and keeps the data.</li>
+<li>For administration (CLI) use <code>sudo e-approval-kr-admin ...</code> (runs as the service account). To create the first administrator without a screen: <code>sudo e-approval-kr-admin setup</code>. Options: <code>--port N</code>, <code>--no-start</code>. <code>--lan</code> opens the port in ufw (if active) only for private subnets (10.x, 172.16-31.x, 192.168.x).</li>
+<li>Works on x86_64 Linux with glibc 2.35 or newer; Python is not needed. Running <code>install.sh</code> again from a newer tarball upgrades and keeps the data.</li>
+<li>For administration (CLI) use <code>sudo e-approval-kr-admin ...</code> (runs as the service account). To create the first administrator without a screen: <code>sudo e-approval-kr-admin setup</code>. Options: <code>--port N</code>, <code>--no-start</code>. <code>--lan</code> opens the port in ufw (if active) only for private subnets (10.x, 172.16-31.x, 192.168.x).</li>
+<li>Works on x86_64 Linux with glibc 2.35 or newer; Python is not needed. Running <code>install.sh</code> again from a newer tarball upgrades and keeps the data.</li>
+<li>Uninstall: <code>sudo ./uninstall.sh</code> (keeps data) / <code>sudo ./uninstall.sh --purge</code> (also deletes data, cannot be undone)</li>
+</ul>
+
+<h2 id="pyz">Python 3.10 or newer (pyz file)</h2>
+<p>If Python 3.10+ is already installed, one file is enough. No service is registered, so this suits trials and very small offices.</p>
+<div class="adm"><b>For administrators</b><pre><code>python3 e-approval-kr-&lt;version&gt;.pyz serve
+# Windows: py e-approval-kr-&lt;version&gt;.pyz serve
+python3 e-approval-kr-&lt;version&gt;.pyz setup      # create the first admin in the terminal</code></pre></div>
+<p>Choose the data folder with the <code>GYEOLJAE_DATA</code> environment variable or <code>--data FOLDER</code>. Otherwise a per-user folder is used (Windows <code>%LOCALAPPDATA%\gyeoljae</code>, macOS <code>~/Library/Application Support/gyeoljae</code>, Linux <code>~/.local/share/gyeoljae</code>). Closing the terminal window stops the server.</p>
+
+<h2 id="docker">Docker</h2>
+<div class="adm"><b>For administrators</b>Build an image from the repository's <code>Dockerfile</code> and run it:<pre><code>docker build -t e-approval-kr .
+docker run --rm -it -v e-approval-data:/data e-approval-kr setup      # first administrator (terminal)
+docker run -d --name e-approval-kr -p 127.0.0.1:8130:8130 -v e-approval-data:/data e-approval-kr</code></pre>
+<b>To use the browser wizard with Docker</b>, open the one-time <code>/setup?key=…</code> address printed in the container log (<code>docker logs e-approval-kr</code>). Connections from outside the container need this key; to choose it yourself pass <code>-e GYEOLJAE_SETUP_TOKEN=&lt;16+ chars&gt;</code>. You can also create the administrator with the <code>setup</code> command first, as above.
+<ul><li>Data lives in the volume mounted at <code>/data</code>. Deleting the volume deletes the data.</li>
+<li>The server listens on 0.0.0.0:8130 inside the container; <code>-p 127.0.0.1:8130:8130</code> makes it reachable from this computer only. To open it to the LAN use <code>-p 8130:8130</code> (an HTTPS proxy is recommended, see <a href="first-setup.html#https">HTTPS</a>). More in <code>docs/DEPLOY.md</code>.</li></ul></div>
+
+<h2>Check that it works</h2>
+<ol><li>Open <code>http://127.0.0.1:8130/healthz</code> in a browser. A short OK response means the server is running.</li>
+<li>If not, see <a href="troubleshooting.html">Troubleshooting</a>.</li></ol>
+
+<div class="pn"><a href="overview.html">&larr; Previous: 1. Overview and terms</a><a href="first-setup.html">Next: 3. First-run setup &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

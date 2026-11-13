@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stop a running e-approval-kr daemon before files are replaced (upgrade). Data is never touched.
+LABEL=com.e-approval-kr.server
+if launchctl print "system/$LABEL" >/dev/null 2>&1; then
+    launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
+fi
+exit 0

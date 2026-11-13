@@ -1,0 +1,240 @@
+name: release
+# Tag push v* -> tests -> self-contained server packages per OS (PyInstaller) -> real install/login/
+# uninstall smoke test of each package on a fresh runner -> GitHub Release with SHA256SUMS.
+# workflow_dispatch builds and smoke-tests everything but does not publish a release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+  PYINSTALLER_VERSION: "6.22.3"
+  WINSW_VERSION: "v2.12.0"
+  WINSW_SHA256: "b5066b7bbdfba1293e5d15cda3caaea88fbeab35bd5b38c41c913d492aadfc4f"          # WinSW.NET461.exe
+  WINSW_LICENSE_SHA256: "1cdf703c10a70e5973bf3acf2a5eeabe7746237155b92db2034aeae26fdf7802"  # LICENSE.txt @ tag
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  build:
+    name: build + smoke (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64, os: windows-latest, kind: windows }
+          - { name: macos-arm64, os: macos-14, kind: macos }
+          - { name: macos-x64, os: macos-15-intel, kind: macos }
+          - { name: linux-x64, os: ubuntu-22.04, kind: linux }   # oldest supported glibc (2.35)
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: version
+        id: ver
+        shell: bash
+        run: |
+          SRC=$(python -c "import re;print(re.search(r'__version__\s*=\s*[\"\x27]([^\"\x27]+)', open('src/gyeoljae/__init__.py', encoding='utf-8').read()).group(1))")
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+            if [[ "${VER%%-*}" != "$SRC" ]]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match __version__ $SRC"; exit 1
+            fi
+          else
+            VER="$SRC"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "version $VER"
+
+      - name: unit + web tests
+        working-directory: tests
+        run: python -m unittest discover -p "test_*.py"
+      - name: end-to-end scenario
+        run: python tests/e2e_scenario.py
+
+      - name: install PyInstaller (build time only)
+        run: python -m pip install "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+
+      - name: build binary
+        if: matrix.kind != 'linux'
+        run: python packaging/build.py --version "${{ steps.ver.outputs.version }}" --require-manual
+      - name: build binary + tarball
+        if: matrix.kind == 'linux'
+        run: python packaging/build.py --version "${{ steps.ver.outputs.version }}" --require-manual --tarball
+
+      # ---------------- Windows: WinSW + Inno Setup ----------------
+      - name: fetch WinSW (pinned, sha256-verified)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          $d = "build\winsw"; New-Item -ItemType Directory -Force $d | Out-Null
+          $base = "https://github.com/winsw/winsw/releases/download/$env:WINSW_VERSION"
+          Invoke-WebRequest "$base/WinSW.NET461.exe" -OutFile "$d\WinSW.NET461.exe"
+          Invoke-WebRequest "https://raw.githubusercontent.com/winsw/winsw/$env:WINSW_VERSION/LICENSE.txt" -OutFile "$d\LICENSE.txt"
+          foreach ($p in @(@("$d\WinSW.NET461.exe", $env:WINSW_SHA256), @("$d\LICENSE.txt", $env:WINSW_LICENSE_SHA256))) {
+            $h = (Get-FileHash $p[0] -Algorithm SHA256).Hash.ToLower()
+            if ($h -ne $p[1]) { throw "sha256 mismatch for $($p[0]): $h" }
+          }
+      - name: build installer (Inno Setup)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed" }
+          }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\windows\e-approval-kr.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      # ---------------- macOS: pkgbuild/productbuild ----------------
+      - name: build .pkg
+        if: matrix.kind == 'macos'
+        run: packaging/macos/build_pkg.sh "${{ steps.ver.outputs.version }}" dist
+
+      - name: locate artifact
+        id: art
+        shell: bash
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          case "${{ matrix.kind }}" in
+            windows) F="dist/e-approval-kr-setup-$V-win-x64.exe" ;;
+            macos)   F=$(ls dist/e-approval-kr-"$V"-macos-*.pkg) ;;
+            linux)   F="dist/e-approval-kr-$V-linux-x64.tar.gz" ;;
+          esac
+          test -f "$F" && ls -l "$F"
+          echo "file=$F" >> "$GITHUB_OUTPUT"
+
+      - name: smoke test (install -> healthz -> setup -> login -> uninstall)
+        run: python packaging/smoke_test.py ${{ matrix.kind }} "${{ steps.art.outputs.file }}"
+      - name: service logs on failure
+        if: failure() && matrix.kind != 'windows'
+        shell: bash
+        run: |
+          if [[ "${{ matrix.kind }}" == linux ]]; then
+            sudo journalctl -u e-approval-kr --no-pager | tail -100 || true
+          else
+            sudo tail -100 /Library/Logs/e-approval-kr/server.log || true
+          fi
+      - name: service logs on failure (Windows)
+        if: failure() && matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:ProgramData\e-approval-kr\logs" -Filter *.log -ErrorAction SilentlyContinue |
+            ForEach-Object { "== $($_.Name)"; Get-Content $_.FullName -Tail 100 }
+          Get-Content "$env:TEMP\eak-install.log" -Tail 100 -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.name }}
+          path: ${{ steps.art.outputs.file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  pyz:
+    name: zipapp (.pyz)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"          # oldest supported Python
+      - name: build
+        shell: bash
+        run: |
+          VER=$(python -c "import re;print(re.search(r'__version__\s*=\s*[\"\x27]([^\"\x27]+)', open('src/gyeoljae/__init__.py', encoding='utf-8').read()).group(1))")
+          [[ "$GITHUB_REF_TYPE" == tag ]] && VER="${GITHUB_REF_NAME#v}"
+          python scripts/build_zipapp.py --version "$VER" --out dist
+      - name: smoke test (.pyz on Python 3.10)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYZ=$(ls dist/*.pyz)
+          export GYEOLJAE_DATA="$RUNNER_TEMP/pyz-data"
+          python -s -I "$PYZ" serve --host 127.0.0.1 --port 18140 > "$RUNNER_TEMP/pyz.log" 2>&1 &
+          SRV=$!
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:18140/healthz && break; sleep 1; done
+          PW="Smoke-$RANDOM-$RANDOM-pw"
+          printf '%s\n' "$PW" | python -s -I "$PYZ" setup --admin-id admin --password-file -
+          python packaging/smoke_test.py http --port 18140 --password "$PW"
+          kill "$SRV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-pyz
+          path: dist/*.pyz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: GitHub Release
+    needs: [build, pyz]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: assets
+          merge-multiple: true
+      - name: checksums
+        working-directory: assets
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: release notes
+        shell: bash
+        run: |
+          TAG="$GITHUB_REF_NAME"; V="${TAG#v}"
+          M="https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/docs/manual"
+          cat > notes.md <<EOF
+          ## e-approval-kr ${V}
+
+          ### 다운로드 (Python 설치 불필요)
+          | 운영체제 | 파일 | 설치 |
+          |---|---|---|
+          | Windows 10/11 (x64) | \`e-approval-kr-setup-${V}-win-x64.exe\` | 실행 → 마침 후 브라우저에서 첫 관리자 만들기 |
+          | macOS (Apple Silicon) | \`e-approval-kr-${V}-macos-arm64.pkg\` | 서명 전 패키지: Finder에서 **우클릭 → 열기** (또는 설정 → 개인정보 보호 및 보안 → 그래도 열기) |
+          | macOS (Intel) | \`e-approval-kr-${V}-macos-x64.pkg\` | 위와 같음 |
+          | Linux (x64, glibc 2.35+, systemd) | \`e-approval-kr-${V}-linux-x64.tar.gz\` | 압축 해제 후 \`sudo ./install.sh\` |
+          | Python 3.10+ 가 있는 모든 OS | \`e-approval-kr-${V}.pyz\` | \`python3 e-approval-kr-${V}.pyz serve\` |
+
+          설치 후 **이 컴퓨터의 브라우저**에서 http://127.0.0.1:8130/setup 을 열어 첫 관리자를 만듭니다.
+          기본은 이 컴퓨터에서만 접속(127.0.0.1)되며, 사내 LAN 공개와 HTTPS는 설명서를 따르세요.
+          파일 무결성: \`SHA256SUMS\` 와 비교하세요 (\`sha256sum -c SHA256SUMS\`, Windows: \`Get-FileHash\`).
+
+          설명서(패키지에도 포함): [설치](${M}/ko/install.html) · [첫 설정](${M}/ko/first-setup.html) · [업그레이드](${M}/ko/upgrade.html) · [백업](${M}/ko/backup.html) · [보안](${M}/ko/security.html) · [문제 해결](${M}/ko/troubleshooting.html)
+
+          ---
+
+          ### Downloads (no Python required)
+          Windows installer (\`.exe\`, installs a Windows service), macOS \`.pkg\` (arm64 / x64, LaunchDaemon;
+          unsigned - right-click → Open, or System Settings → Privacy & Security → Open Anyway), Linux tarball
+          (\`sudo ./install.sh\`, systemd service), and a \`.pyz\` for any OS with Python 3.10+.
+          After installing, open http://127.0.0.1:8130/setup **on the same machine** to create the first administrator.
+          The server listens on 127.0.0.1 only until you change it; read the manual before exposing it on a LAN.
+          Verify downloads against \`SHA256SUMS\`.
+
+          Manual (also inside every package): [Install](${M}/en/install.html) · [First setup](${M}/en/first-setup.html) · [Upgrade](${M}/en/upgrade.html) · [Backup](${M}/en/backup.html) · [Security](${M}/en/security.html) · [Troubleshooting](${M}/en/troubleshooting.html)
+          EOF
+      - name: create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          PRE=""; [[ "$TAG" == *-* ]] && PRE="--prerelease"
+          gh release create "$TAG" assets/* --verify-tag --title "e-approval-kr ${TAG#v}" --notes-file notes.md $PRE

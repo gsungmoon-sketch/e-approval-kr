@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backup and restore - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
+<nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/backup.html">한국어</a></div></nav>
+<div class="wrap"><h1>Backup and restore</h1>
+
+<p>A backup is a single zip file containing all documents, attachments and staff data. It can be made while the server is running.</p>
+<h2>Automatic backups</h2>
+<p>When you choose a backup folder in <a href="first-setup.html">First setup</a>, the server checks every hour and makes <b>one backup per day</b>, named <code>e-approval-kr-YYYYMMDD-HHMMSS.zip</code>, keeping only the <b>latest 14</b> files of that name pattern (other files are never touched). The first backup appears within an hour after setup. To change how many are kept, set <code>"backup_keep"</code> (1-365) in <code>server.json</code> in the data folder and restart the service.
+Use a folder on a <b>different disk</b> from the server. Copying a backup to an external drive or another PC once a week is even safer.</p>
+<div class="note"><b>Good habit</b>Now and then open the backup folder and check that dated files keep appearing.</div>
+<h2>Manual backup</h2>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr backup 2026-11-13.zip</code></pre>
+To give the data location explicitly: <code>e-approval-kr --data &lt;data-folder&gt; backup file.zip</code></div>
+<div class="warn"><b>Backup files are sensitive</b>They contain documents and personal data. Keep them in encrypted storage (for example a password-protected external drive) and do not let others open them.</div>
+<h2>Restoring</h2>
+<ol><li>Stop the server (stop the Windows service / <code>sudo systemctl stop e-approval-kr</code>).</li>
+<li>Restore into an <b>empty folder</b>. It will not restore on top of existing data. Do not delete the old data folder; rename it and keep it.</li>
+<li>When restoring finishes, the audit log is verified automatically.</li>
+<li>Make the service use the restored folder (or put it at the old location) and start the server.</li></ol>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr restore 2026-11-13.zip --to /path/to/new-empty-folder</code></pre>
+For the data folder of service installs see <a href="install.html">Installation</a>. On Linux, set the folder owner to the <code>e-approval-kr</code> user after restoring (<code>sudo chown -R e-approval-kr: folder</code>).</div>
+<h2 id="head">Keeping the audit head</h2>
+<p>The audit log is a chain of linked hashes. Someone who can edit the data folder freely could rebuild the whole chain. If you regularly write down the current <b>head</b> (number and hash) <b>somewhere else</b>, even that attempt is caught.</p>
+<div class="adm"><b>For administrators</b><pre><code>e-approval-kr export-audit-head              # prints number and hash; store elsewhere
+e-approval-kr check-audit-head &lt;number&gt; &lt;hash&gt;   # confirm the stored value is still in the chain
+e-approval-kr -u admin verify-audit          # verify chain and completed documents</code></pre></div>
+<p>Suggested routine: store the head and run verification once a month.</p>
+
+<h2 id="upgrade">Upgrading</h2>
+
+<p>Installing a newer version <b>keeps your data</b>. Still, always back up first.</p>
+<ol>
+<li><b>Back up.</b> Make a <a href="backup.html">manual backup</a> and copy it somewhere safe.</li>
+<li>Pick a quiet time (after work) and tell staff. The server stops briefly.</li>
+<li><b>Download and run the new installer</b>, the same way as the first time.
+<ul><li>Windows: run the new <code>setup-&lt;version&gt;-win-x64.exe</code> (same <a href="install.html#win">SmartScreen steps</a>). No need to uninstall first.</li>
+<li>macOS: install the new <code>.pkg</code>.</li>
+<li>Linux: unpack the new tar.gz and run <code>sudo ./install.sh</code> (add <code>--lan</code> again if you used it before).</li>
+<li>pyz: replace the file and run it.</li>
+<li>Docker: build the new image and start the container again with the <b>same volume</b>.</li></ul></li>
+<li>Sign in, check that recent documents are there, and open <code>/healthz</code>.</li>
+<li>If something goes wrong, reinstall the previous version or <a href="backup.html">restore</a> the backup.</li></ol>
+<div class="note"><b>Settings are kept</b>Bind address, port and backup folder live in <code>server.json</code> in the data folder, so they survive an upgrade. The installer does rewrite the service definition, though (on Linux give <code>--lan</code> / <code>--port</code> again as the first time), so check once after upgrading that other PCs can still connect.</div>
+<div class="adm"><b>For administrators</b>Right after upgrading run <code>e-approval-kr -u admin verify-audit</code> to confirm the audit log is intact.</div>
+
+<div class="pn"><a href="user.html">&larr; Previous: 5. User guide</a><a href="security.html">Next: 7. Security recommendations &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>
