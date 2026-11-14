@@ -480,6 +480,37 @@ class FilingMixin:
                 raise Forbidden("분류를 바꿀 권한이 없습니다(기안 중엔 기안자, 그 뒤엔 부서장·문서관리 담당)")
             return self._set_tags_c(c, actor, d["id"], dclass, projects)
 
+    def doc_tag_project(self, actor, doc_id, pid, on=True):
+        """사업 태그 하나 넣기/빼기. 현재 목록 읽기→바꾸기→쓰기를 한 쓰기 트랜잭션(BEGIN IMMEDIATE) 안에서
+        하므로 동시에 다른 태그를 바꿔도 서로 덮어쓰지 않는다. 반환 (바뀐 내용, 이후 사업 id 목록)."""
+        pid = int(pid)
+        with self._tx() as c:
+            d = self._check_view(c, actor, int(doc_id))
+            if not self._can_reclass(c, self._user(c, actor), d):
+                raise Forbidden("분류를 바꿀 권한이 없습니다(기안 중엔 기안자, 그 뒤엔 부서장·문서관리 담당)")
+            cur = [r["project_id"] for r in c.execute("select project_id from doc_projects where doc_id=?", (d["id"],))]
+            new = [x for x in cur if x != pid] + ([pid] if on else [])
+            ch = self._set_tags_c(c, actor, d["id"], KEEP, new)
+            after = [r["project_id"] for r in c.execute(
+                "select project_id from doc_projects where doc_id=? order by project_id", (d["id"],))]
+            return ch, after
+
+    def doc_tag_folder(self, actor, doc_id, fid, on=True):
+        """내 폴더 하나에 넣기/빼기(한 행만 insert/delete, 다른 폴더는 건드리지 않음). 반환 이후 폴더 id 목록."""
+        fid = int(fid)
+        with self._tx() as c:
+            d = self._check_view(c, actor, int(doc_id))
+            if not c.execute("select 1 from folders where id=? and owner=?", (fid, actor)).fetchone():
+                raise NotFound("폴더 없음")
+            if on:
+                c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
+                          (fid, d["id"], now_iso()))
+            else:
+                c.execute("delete from folder_docs where folder_id=? and doc_id=?", (fid, d["id"]))
+            return [r["folder_id"] for r in c.execute(
+                "select fd.folder_id from folder_docs fd join folders f on f.id=fd.folder_id "
+                "where fd.doc_id=? and f.owner=? order by fd.folder_id", (d["id"], actor))]
+
     def doc_set_folders(self, actor, doc_id, folder_ids):
         """이 문서가 들어 있을 내 폴더(전체 교체). 볼 수 있는 문서만."""
         with self._tx() as c:

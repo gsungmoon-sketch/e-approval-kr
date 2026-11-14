@@ -7,19 +7,16 @@
 @font-face { font-family:"Noto Serif KR"; font-weight:700; src:url("font/NotoSerifKR-700.woff2") format("woff2"); font-display:swap; }
 @font-face { font-family:"Pretendard"; font-weight:400; src:url("font/Pretendard-400.woff2") format("woff2"); font-display:swap; }
 @font-face { font-family:"Pretendard"; font-weight:700; src:url("font/Pretendard-700.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"NanumGothic"; font-weight:400; src:url("font/NanumGothic-400.woff2") format("woff2"), url("font/NanumGothic-Regular.ttf") format("truetype"); font-display:swap; }
-@font-face { font-family:"NanumGothic"; font-weight:700; src:url("font/NanumGothic-700.woff2") format("woff2"), url("font/NanumGothic-Bold.ttf") format("truetype"); font-display:swap; }
-@font-face { font-family:"NanumMyeongjo"; font-weight:400; src:url("font/NanumMyeongjo-400.woff2") format("woff2"), url("font/NanumMyeongjo-Regular.ttf") format("truetype"); font-display:swap; }
-@font-face { font-family:"NanumMyeongjo"; font-weight:700; src:url("font/NanumMyeongjo-700.woff2") format("woff2"), url("font/NanumMyeongjo-Bold.ttf") format("truetype"); font-display:swap; }
+@font-face { font-family:"NanumGothic"; font-weight:400; src:url("font/NanumGothic-Regular.ttf") format("truetype"); font-display:swap; }
+@font-face { font-family:"NanumGothic"; font-weight:700; src:url("font/NanumGothic-Bold.ttf") format("truetype"); font-display:swap; }
+@font-face { font-family:"NanumMyeongjo"; font-weight:400; src:url("font/NanumMyeongjo-Regular.ttf") format("truetype"); font-display:swap; }
+@font-face { font-family:"NanumMyeongjo"; font-weight:700; src:url("font/NanumMyeongjo-Bold.ttf") format("truetype"); font-display:swap; }
 @font-face { font-family:"D2Coding"; font-weight:400; src:url("font/D2Coding-400.woff2") format("woff2"); font-display:swap; }
 @font-face { font-family:"D2Coding"; font-weight:700; src:url("font/D2Coding-700.woff2") format("woff2"); font-display:swap; }
 /* KTUG 배포 한글 폰트(함초롬체LVT=자유배포/은바탕=GPL). 한자·옛한글은 서브셋 제외→NotoKR 폴백 */
-@font-face { font-family:"함초롬바탕"; font-weight:400; src:url("font/Hamchorom-Batang-400.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"함초롬바탕"; font-weight:700; src:url("font/Hamchorom-Batang-700.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"함초롬돋움"; font-weight:400; src:url("font/Hamchorom-Dotum-400.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"함초롬돋움"; font-weight:700; src:url("font/Hamchorom-Dotum-700.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"UnBatang"; font-weight:400; src:url("font/UnBatang-400.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"UnBatang"; font-weight:700; src:url("font/UnBatang-700.woff2") format("woff2"); font-display:swap; }
+
+
+
 /* 독점 폰트명 별칭 → 가장 가까운 오픈 폰트로 렌더(이름은 HWPX에 원본 보존, 한글에선 정품 사용) */
 @font-face { font-family:"맑은 고딕"; src:url("font/Pretendard-400.woff2") format("woff2"); font-display:swap; }
 @font-face { font-family:"맑은 고딕"; font-weight:700; src:url("font/Pretendard-700.woff2") format("woff2"); font-display:swap; }
@@ -28,8 +25,8 @@
 @font-face { font-family:"HY견고딕"; src:url("font/NotoSansKR-700.woff2") format("woff2"); font-display:swap; }
 @font-face { font-family:"바탕"; src:url("font/NotoSerifKR-400.woff2") format("woff2"); font-display:swap; }
 @font-face { font-family:"궁서"; src:url("font/NotoSerifKR-400.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"나눔고딕"; src:url("font/NanumGothic-400.woff2") format("woff2"), url("font/NanumGothic-Regular.ttf") format("truetype"); font-display:swap; }
-@font-face { font-family:"나눔명조"; src:url("font/NanumMyeongjo-400.woff2") format("woff2"), url("font/NanumMyeongjo-Regular.ttf") format("truetype"); font-display:swap; }
+@font-face { font-family:"나눔고딕"; src:url("font/NanumGothic-Regular.ttf") format("truetype"); font-display:swap; }
+@font-face { font-family:"나눔명조"; src:url("font/NanumMyeongjo-Regular.ttf") format("truetype"); font-display:swap; }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body { margin:0; height:100%; overflow:hidden; font-family:"NotoKR","Noto Sans KR","NanumGothic",sans-serif; background:#cfd4da; font-size:13px; }
 body { display:flex; flex-direction:column; }

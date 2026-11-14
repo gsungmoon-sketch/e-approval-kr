@@ -59,19 +59,14 @@ def _dclass_id(v):
 
 
 def project_tag(app, a, doc, pid, on=True):
-    """사업 태그 하나 넣기/빼기 = 문서 화면 '분류 저장'과 같은 doc_reclass(사업 목록 전체 교체)."""
-    cur = [p["id"] for p in app.doc_tags(a, doc)["projects"]]
-    new = [x for x in cur if x != pid] + ([pid] if on else [])
-    ch = app.doc_reclass(a, doc, projects=new)
-    return {"doc": doc, "projects": [p["id"] for p in app.doc_tags(a, doc)["projects"]], "changed": ch}
+    """사업 태그 하나 넣기/빼기(읽기·쓰기를 한 트랜잭션에서: 동시 변경이 서로 덮어쓰지 않음)."""
+    ch, after = app.doc_tag_project(a, doc, pid, on)
+    return {"doc": doc, "projects": after, "changed": ch}
 
 
 def folder_tag(app, a, doc, fid, on=True):
-    """내 폴더 태그 하나 넣기/빼기 = 문서 화면 '폴더 저장'과 같은 doc_set_folders(전체 교체)."""
-    cur = [f["id"] for f in app.doc_tags(a, doc)["folders"]]
-    new = [x for x in cur if x != fid] + ([fid] if on else [])
-    app.doc_set_folders(a, doc, new)
-    return {"doc": doc, "folders": [f["id"] for f in app.doc_tags(a, doc)["folders"]]}
+    """내 폴더 태그 하나 넣기/빼기(그 한 행만 바꿈)."""
+    return {"doc": doc, "folders": app.doc_tag_folder(a, doc, fid, on)}
 
 
 def run_filing(args, app, a, out):

@@ -95,6 +95,7 @@ def _extract_vendor() -> Path:
             return dest
         base.mkdir(parents=True, exist_ok=True)
         tmp = base / (".tmp-" + dest.name + "-" + secrets.token_hex(4))
+        tmp.mkdir(mode=0o700)
         try:
             for k, h in man.items():
                 t = src
@@ -127,14 +128,92 @@ def vendor_dir() -> Path:
     return VENDOR if pkgfiles.on_disk() else _extract_vendor()
 
 
+# ------------------------------------------------------------ 변환기 import 를 안전하게
+# 예전에는 반입 폴더(.pyz 면 데이터 폴더 캐시)를 sys.path 맨 앞에 넣었다. 그 폴더에 누가 json.py·hwpx.py 같은
+# 파일이나 __pycache__/*.pyc 를 심으면 표준 라이브러리보다 먼저 실행된다. 이제는
+#  1) 반입 모듈(VENDOR.md 의 최상위 *.py)만 전용 finder 로, VENDOR.md sha256 과 맞는 소스 바이트에서 직접 컴파일(.pyc 안 씀)
+#  2) 폴더는 sys.path 맨 뒤에 붙인다(반입 모듈의 'if APP not in sys.path: insert(0)' 도 그래서 건너뜀).
+#     단 그 폴더의 path entry finder 는 _NoPathEntry 로 고정 — 경로 기반 import 는 거기서 아무것도 못 찾는다
+#  3) .pyz 캐시는 목록에 없는 항목이 있거나, POSIX 에서 남의 소유·전체(other) 쓰기 가능이면 거절
+class _VendorFinder:
+    """VENDOR.md 에 적힌 최상위 모듈만 맡는 meta path finder. 소스는 해시 대조 뒤 compile, 바이트코드 캐시 무시."""
+
+    def __init__(self, d: Path, mods: dict):
+        self.dir, self.mods = d, mods  # {모듈 이름: sha256}
+
+    def find_spec(self, name, path=None, target=None):
+        if path is not None or name not in self.mods:
+            return None
+        import importlib.util
+        return importlib.util.spec_from_file_location(name, str(self.dir / (name + ".py")), loader=self)
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        name = module.__spec__.name
+        src = (self.dir / (name + ".py")).read_bytes()
+        if hashlib.sha256(src).hexdigest() != self.mods[name]:
+            raise ImportError(f"hanword 모듈이 VENDOR.md 와 다릅니다: {name}")
+        exec(compile(src, module.__spec__.origin, "exec", dont_inherit=True), module.__dict__)
+
+
+class _NoPathEntry:
+    """sys.path_importer_cache 에 반입 폴더용으로 넣는 '아무것도 못 찾는' path entry finder.
+    반입 코드의 'if APP not in sys.path' 를 만족시키려고 폴더를 sys.path 에 두지만, 경로 기반 import
+    (예: 반입 코드의 선택적 'from hwpx import'·'from lxml import', 앱 다른 곳의 try-import)가
+    그 폴더에서 목록 밖 파일을 찾는 일은 없게 한다. 검사 뒤에 심은 파일(TOCTOU)·Windows(권한 검사 생략)도 마찬가지.
+    반입 모듈 자체는 meta path 의 _VendorFinder 가 해시 대조 뒤 적재한다."""
+
+    def find_spec(self, name, target=None):
+        return None
+
+    def invalidate_caches(self):
+        pass
+
+
+def _check_cache_dir(d: Path, man: dict) -> None:
+    """.pyz 캐시 폴더 검사: 목록 밖 항목 금지, POSIX 는 소유자=나 그리고 전체(other) 쓰기 없음(폴더와 상위).
+    그룹 쓰기는 umask 002(사용자 전용 그룹) 환경의 정상값이라 허용 — 새로 풀 때는 0700 으로 만든다."""
+    allowed = {PurePosixPath(k).parts[0] for k in man} | {"VENDOR.md", "__pycache__"}
+    extra = sorted(x.name for x in d.iterdir() if x.name not in allowed)
+    if extra:
+        raise RuntimeError(f"hanword 캐시에 모르는 파일이 있습니다: {extra[:5]}")
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:  # Windows: 사용자 프로필 아래 데이터 폴더, ACL 은 OS 몫
+        return
+    for x in (d, d.parent):
+        st = x.stat()
+        if st.st_uid != getuid() or st.st_mode & 0o002:
+            raise RuntimeError(f"hanword 캐시 폴더 권한이 안전하지 않습니다(소유자·쓰기 권한): {x}")
+
+
+def _trusted_manifest() -> dict:
+    """VENDOR.md 는 캐시 사본이 아니라 패키지(폴더 또는 .pyz 안)에서 읽는다."""
+    if pkgfiles.on_disk():
+        return vendor_manifest((VENDOR / "VENDOR.md").read_text(encoding="utf-8"))
+    from importlib.resources import files
+    return vendor_manifest(files(__package__).joinpath("vendor").joinpath("hanword")
+                           .joinpath("VENDOR.md").read_bytes().decode("utf-8"))
+
+
 @functools.lru_cache(maxsize=1)
 def embed():
     if not available():
         raise RuntimeError("hanword 편집기가 반입되지 않았습니다(scripts/vendor_hanword.py)")
-    p = str(vendor_dir())
+    d = vendor_dir()
+    man = _trusted_manifest()
+    if not pkgfiles.on_disk():
+        _check_cache_dir(d, {k: h for k, h in man.items() if not k.startswith("font/")})
+    mods = {k[:-3]: h for k, h in man.items() if "/" not in k and k.endswith(".py")}
+    if not any(isinstance(f, _VendorFinder) for f in sys.meta_path):
+        sys.meta_path.insert(0, _VendorFinder(d, mods))
+    p = str(d)
+    if not isinstance(sys.path_importer_cache.get(p), _NoPathEntry):
+        sys.path_importer_cache[p] = _NoPathEntry()  # 이 폴더에서 경로 기반 import 금지(반입 모듈은 위 finder 만)
     if p not in sys.path:
-        sys.path.insert(0, p)
-    import hanword_embed  # noqa: E402  (vendor 폴더)
+        sys.path.append(p)  # 맨 뒤: 표준 라이브러리·설치 패키지가 늘 먼저
+    import hanword_embed  # noqa: E402  (_VendorFinder 가 검증된 소스로 적재)
     return hanword_embed
 
 

@@ -6,6 +6,7 @@
 #   data = html_to_hwpx(html, page=GOV_PAGE)
 import os, re, sys, threading, functools, html as htmlmod
 from html.parser import HTMLParser
+from hanword_htmlparse import EofSafeParser
 
 APP = os.path.dirname(os.path.abspath(__file__))
 if APP not in sys.path: sys.path.insert(0, APP)
@@ -176,7 +177,7 @@ def _clean_attr(tag, name, v):
     if name in ("title", "alt"): return v[:300]
     return None
 
-class _San(HTMLParser):
+class _San(EofSafeParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.out = []; self.stack = []; self.skip = 0; self.skip_tag = None

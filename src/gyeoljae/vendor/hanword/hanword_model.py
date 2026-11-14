@@ -21,6 +21,7 @@
 #   그림·용지 연산: insert_image·set_image·set_page. 그림 지우기 = delete_block.
 import re, json, copy, inspect, threading, html as htmlmod
 from html.parser import HTMLParser
+from hanword_htmlparse import EofSafeParser
 
 import hwpxconv
 from hwpxconv import _PP, _extract_fnotes, _safe_link_url, ListHTML, MAX_LIST_LEVEL, PAPERS_MM, _parse_margins
@@ -40,7 +41,14 @@ MAX_OPS = 10000
 MAX_TROWS = 5000; MAX_TCOLS = 256; MAX_TCELLS = 30000
 MAX_CPARAS = hwpxconv.MAX_CPARAS   # 셀 하나의 문단 수(파서와 공용)
 MAX_WORK = 3000000        # apply 한 번의 run 처리 총량(이차 시간 DoS 차단)
+MAX_DOC_CELLS = 100000    # 문서 전체 표 칸(칸 객체) 수 상한 — 표 하나 상한(MAX_TCELLS)×표 수로 메모리 폭증 차단(2026-11-14 감사)
+TABLE_OP_COST = 1000      # 표 연산 한 번의 기본 작업량(격자 계산·복사) — 칸 수 비용은 따로 더함
+_TABLE_OPS = {"insert_table", "table_insert_rows", "table_delete_rows", "table_insert_cols", "table_delete_cols",
+              "table_merge", "table_split", "table_cell"}
 _TL = threading.local()
+
+def _ncells(b):
+    return sum(len(r) for r in b.get("rows") or [] if isinstance(r, list)) if isinstance(b, dict) and b.get("type") == "table" else 0
 
 def _charge(n):
     w = getattr(_TL, "work", None)
@@ -74,7 +82,7 @@ def _align(a):
     return {"start": "left", "end": "right"}.get(a, a) if a in ALIGNS + ("start", "end") else None
 
 # ───────────── HTML → 모델 ─────────────
-class _MetaGrab(HTMLParser):
+class _MetaGrab(EofSafeParser):
     def __init__(self):
         super().__init__(convert_charrefs=True); self.meta = None
     def handle_starttag(self, tag, attrs):
@@ -365,9 +373,12 @@ def validate(m):
     for k, v in notes.items():
         if not isinstance(k, str) or not _ID.fullmatch(k) or not isinstance(v, str) or len(v) > 100000 or _SURR.search(v): _fail("notes 항목 오류")
         total += len(v)
+    cells = 0
     for b in m["blocks"]:
         total += _check_block(b)
         if total > MAX_TOTAL: _fail("문서가 너무 큼(%dMB 상한)" % (MAX_TOTAL >> 20))
+        cells += _ncells(b)
+        if cells > MAX_DOC_CELLS: _fail("표 칸이 너무 많음(문서 전체 %d 상한)" % MAX_DOC_CELLS)
     _TL.size = total
     return m
 
@@ -984,14 +995,26 @@ def apply(m, ops):
     if not isinstance(ops, list) or len(ops) > MAX_OPS: _fail("ops는 배열(최대 %d)" % MAX_OPS)
     m = copy.deepcopy(m)
     _TL.work = 0; _TL.gcache = {}
+    cells = sum(_ncells(b) for b in m["blocks"])   # 문서 전체 칸 수(연산마다 바뀐 표만 다시 셈)
     try:
         for i, op in enumerate(ops):
             if not isinstance(op, dict) or not isinstance(op.get("op"), str) or op["op"] not in OPS: _fail("op[%d]: 알 수 없는 연산" % i)
             args = {k: v for k, v in op.items() if k != "op"}
             try: _SIGS[op["op"]].bind(m, **args)   # 인자 묶기 오류만 사용자 오류(연산 안 TypeError = 내부 버그 그대로)
             except TypeError as e: _fail("op[%d] %s: 인자 오류(%s)" % (i, op["op"], str(e)[:120]))
-            try: OPS[op["op"]](m, **args)
-            except ModelError as e: _fail("op[%d] %s: %s" % (i, op["op"], e))
+            name = op["op"]; idx = args.get("index"); before = None
+            if name in _TABLE_OPS: _charge(TABLE_OP_COST)
+            if (name in _TABLE_OPS or name == "delete_block") and name not in ("insert_table", "table_cell") \
+                    and isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < len(m["blocks"]):   # 칸 수가 바뀌는 연산만 다시 셈
+                before = _ncells(m["blocks"][idx]); _charge(len(m["blocks"][idx].get("rows") or []))
+            try: OPS[name](m, **args)
+            except ModelError as e: _fail("op[%d] %s: %s" % (i, name, e))
+            if name == "insert_table": cells += int(args["rows"]) * int(args["cols"])
+            elif name == "insert_block": cells += _ncells(args.get("block"))
+            elif before is not None:
+                after = 0 if name == "delete_block" else _ncells(m["blocks"][idx])
+                cells += after - before
+            if cells > MAX_DOC_CELLS: _fail("op[%d] %s: 표 칸이 너무 많음(문서 전체 %d 상한)" % (i, name, MAX_DOC_CELLS))
             if len(m["blocks"]) > MAX_BLOCKS: _fail("블록 과다")
     finally:
         _TL.work = None; _TL.gcache = None

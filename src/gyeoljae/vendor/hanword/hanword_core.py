@@ -21,6 +21,14 @@ FORMATS_OUT = ("html", "hwpx", "docx", "txt", "pdf")
 EXT = {"htm": "html", "html": "html", "hwpx": "hwpx", "hwp": "hwp", "docx": "docx", "doc": "doc", "txt": "txt", "pdf": "pdf"}
 
 # ───────────── 형식 판별 ─────────────
+def stdio_safe():
+    """Windows 콘솔(cp1252 등) 비 UTF-8 stdout/stderr: 못 쓰는 글자(→·한글)는 '?' 로 — UnicodeEncodeError 로 죽지 않게."""
+    for s in (sys.stdout, sys.stderr):
+        enc = (getattr(s, "encoding", None) or "").lower().replace("-", "").replace("_", "")
+        if enc not in ("utf8", "utf8sig") and hasattr(s, "reconfigure"):
+            try: s.reconfigure(errors="replace")
+            except Exception: pass
+
 def detect(data, name=""):
     """바이트(+파일명) → 형식. 내용 매직 우선, 확장자는 보조(txt/html 구분용)."""
     if data[:4] == b"PK\x03\x04":

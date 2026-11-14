@@ -64,6 +64,12 @@ def _utf8_only(raw):
     m = _ENC.match(raw[3:] if raw[:3] == b"\xef\xbb\xbf" else raw)
     if m and m.group(1).lower().replace(b"_", b"-") not in (b"utf-8", b"utf8"): raise KeepFail("XML이 UTF-8이 아님")
 
+_MM = re.compile(rb"<(?:[A-Za-z_][\w.-]*:)?mailMerge\b")
+def _text_utf8(data, ct):
+    """보존 파트가 UTF-16 등 비 UTF-8 XML이면 거부 — '<' 시작 검사·바이트 검색(필드·mailMerge) 우회 차단."""
+    if ct.endswith("xml") or data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:4] in (b"<\x00?\x00", b"\x00<\x00?") or b"\x00" in data[:4]:
+        if not ct.startswith("image/"): _utf8_only(data)
+
 def _tag_end(buf, i):
     """buf[i]='<' 인 시작 태그의 '>' 위치(따옴표 안 '>' 무시). 선형."""
     q = None; n = len(buf)
@@ -83,14 +89,155 @@ def _safe_xml(raw):
     except Exception: raise KeepFail("파트 XML 손상")
 
 MAX_KEEP_KIDS = 100000   # 본문 최상위 요소 상한 — 넘으면 K2 안 함(탐침 가져오기 비용·메모리 차단, 감사 2026-11-13)
-_BAD_FIELD = re.compile(r"\b(DDEAUTO|DDE|INCLUDEPICTURE|INCLUDETEXT)\b", re.I)   # 외부 자료를 끌어오는 필드 — 원본 조각째 되씀 안 함
 MAX_INSTR = 65536
 
+# ───────────── 필드 허용 목록(2026-11-14 감사) ─────────────
+#   원본 조각째 되쓰는 덩이·파트에 남아도 되는 필드 종류만 허용. 그 밖(LINK·INCLUDE*·IMPORT·DATABASE·RD·AUTOTEXT*·DDE*·
+#   MERGEFIELD·MACROBUTTON·FILLIN·USERNAME 등)·빈/깨진 필드·UNC/file: 대상 = 그 덩이는 되씀 안 함(모델에서 다시 만듦 = 결과 글자만).
+#   이름공간은 접두어가 아니라 URI로(Transitional·Strict), instrText·delInstrText 는 begin…separate 전체를 이어 판정(중첩 포함).
+W_URIS = {W_NS, "http://purl.oclc.org/ooxml/wordprocessingml/main"}
+DOCX_FIELDS = {"PAGE", "NUMPAGES", "SECTIONPAGES", "SECTION", "DATE", "TIME", "CREATEDATE", "SAVEDATE", "PRINTDATE", "EDITTIME",
+               "AUTHOR", "TITLE", "SUBJECT", "KEYWORDS", "COMMENTS", "LASTSAVEDBY", "NUMWORDS", "NUMCHARS", "REVNUM", "DOCPROPERTY",
+               "REF", "PAGEREF", "NOTEREF", "SEQ", "TOC", "TC", "TOA", "TA", "XE", "INDEX", "STYLEREF", "LISTNUM", "AUTONUM",
+               "AUTONUMLGL", "AUTONUMOUT", "SYMBOL", "EQ", "=", "FORMTEXT", "FORMCHECKBOX", "FORMDROPDOWN", "HYPERLINK", "IF",
+               "COMPARE", "QUOTE", "ADVANCE", "BIDIOUTLINE"}
+HWPX_FIELDS = {"HYPERLINK", "CLICK_HERE", "BOOKMARK", "FORMULA", "DATE", "DOC_DATE", "CROSSREF", "SUMMARY", "MEMO", "PROOFREADING_MARKS"}
+_LINK_OK = re.compile(r"(https?:|mailto:)", re.I)
+_FIELD_TOK = re.compile(r'\s*("(?:[^"\\]|\\.)*"|\S+)')
+
+def _field_args(s):
+    out = []; i = 0
+    while len(out) < 64:
+        m = _FIELD_TOK.match(s, i)
+        if not m: break
+        t = m.group(1); i = m.end()
+        out.append(t[1:-1] if len(t) >= 2 and t[0] == '"' and t[-1] == '"' else t)
+    return out
+
+def _url_ok(u):
+    low = re.sub(r"[\s\x00-\x1f]+", "", u or "")
+    return bool(_LINK_OK.match(low)) and "\\" not in low and len(u) <= 2000   # http/https/mailto 만, 역슬래시(UNC 우회) 불가
+
+def docx_field_ok(instr):
+    """DOCX 필드 명령 → 되씀 허용?(허용 목록 종류 + 위험 대상 없음)."""
+    s = (instr or "").strip()
+    if not s or len(s) > MAX_INSTR: return False
+    if re.search(r"(?i)file:|\\\\", s): return False     # file: 대상·이중 역슬래시(경로·UNC \\\\server) 금지
+    a = _field_args(s)
+    if not a: return False
+    kind = "=" if a[0].startswith("=") else a[0].upper()
+    if kind not in DOCX_FIELDS: return False
+    if kind == "HYPERLINK":
+        tgt = None; k = 1
+        while k < len(a):
+            if a[k].startswith("\\"):
+                k += 2 if a[k][1:2].lower() in ("l", "o", "t") else 1   # 인자 받는 스위치
+                continue
+            tgt = a[k]; break
+        if tgt is not None and not _url_ok(tgt): return False
+        if tgt is None and "\\l" not in s.lower(): return False   # 대상도 문서 안 앵커(\\l)도 없음
+    return True
+
+def _hancom_cmd_url(v):
+    return hwpxconv._hancom_unesc(v) if v else v
+
+class _Fields:
+    """스트리밍 XML 필드 추적기(pyexpat namespace_separator=" ", buffer_text). bad = 허용 밖 필드 있음.
+       보수 규칙: 명령부(begin…separate)에 중첩 필드·fldSimple·w:t/w:sym·매크로 등이 끼면 바깥·안쪽 모두 bad
+       (Word는 중첩 결과를 이어 붙여 명령을 만듦 — QUOTE/SYMBOL 로 종류·대상 조립 차단)."""
+    __slots__ = ("kind", "bad", "stk", "cap", "hl", "hlp", "hln", "hld")
+    def __init__(self, kind):
+        self.kind = kind; self.bad = False; self.stk = []; self.cap = 0; self.hl = None; self.hlp = None; self.hln = 0; self.hld = 0
+    def reset(self):   # 덩이 경계: 미완 필드 = 위험(덩이 걸침)
+        if self.stk: self.bad = True
+        b = self.bad; self.bad = False; self.stk = []; self.cap = 0; self.hl = None; self.hlp = None; self.hln = 0; self.hld = 0
+        return b
+    def _eval(self, fr):
+        if fr["nest"] or fr["over"] or not docx_field_ok("".join(fr["buf"])): self.bad = True
+    def _in_instr(self):
+        return bool(self.stk) and self.stk[-1]["ph"] == "i"
+    @staticmethod
+    def _wattr(attrs, local):   # 같은 로컬 이름 속성(Transitional·Strict) 전부 — 둘 이상이면 모호 = 거절
+        return [v for k, v in attrs.items() if k.rpartition(" ")[0] in W_URIS and k.rpartition(" ")[2] == local]
+    def start(self, name, attrs, depth):
+        uri, _, loc = name.rpartition(" ")
+        if self.kind == "docx":
+            if uri not in W_URIS: return
+            if loc == "fldSimple":
+                ins = self._wattr(attrs, "instr")
+                if len(ins) != 1 or not docx_field_ok(ins[0]) or self._in_instr(): self.bad = True
+                if self._in_instr(): self.stk[-1]["nest"] = True
+            elif loc == "fldChar":
+                ts = self._wattr(attrs, "fldCharType")
+                if len(ts) != 1: self.bad = True; return
+                t = ts[0]
+                if t == "begin":
+                    if self._in_instr(): self.stk[-1]["nest"] = True; self.bad = True
+                    self.stk.append({"buf": [], "ph": "i", "n": 0, "over": False, "nest": False})
+                elif t == "separate":
+                    if self._in_instr(): self._eval(self.stk[-1]); self.stk[-1]["ph"] = "r"
+                elif t == "end":
+                    if self.stk:
+                        fr = self.stk.pop()
+                        if fr["ph"] == "i": self._eval(fr)
+                else: self.bad = True
+            elif loc in ("instrText", "delInstrText"):
+                self.cap += 1
+            elif loc in ("t", "delText", "sym") and self._in_instr():   # 명령부 안 일반 글자 = 명령으로 읽힐 수 있음
+                self.bad = True
+            elif loc in ("entryMacro", "exitMacro"):   # 양식 필드 매크로
+                self.bad = True
+        else:
+            if loc == "fieldBegin":   # 이름공간 무관(로컬 이름) — 한컴이 접두어·URI 를 느슨히 다뤄도 안전
+                t = attrs.get("type") or ""
+                if t not in HWPX_FIELDS: self.bad = True
+                elif t == "HYPERLINK":
+                    self.hl = {"name": attrs.get("name"), "Path": None, "Command": None}; self.hld = depth
+                    if self.hl["name"] and not _url_ok(self.hl["name"]): self.bad = True
+            elif loc == "stringParam" and self.hl is not None and attrs.get("name") in ("Path", "Command"):
+                self.hlp = [attrs.get("name"), []]; self.hln = 0
+    def chars(self, data):
+        if self.kind == "docx":
+            if self.cap and self._in_instr():
+                fr = self.stk[-1]; fr["n"] += len(data)
+                if fr["n"] > MAX_INSTR: fr["over"] = True
+                else: fr["buf"].append(data)
+        elif self.hlp is not None:
+            self.hln += len(data)
+            if self.hln <= 8192: self.hlp[1].append(data)
+            else: self.bad = True
+    def end(self, name, depth):
+        uri, _, loc = name.rpartition(" ")
+        if self.kind == "docx":
+            if uri in W_URIS and loc in ("instrText", "delInstrText") and self.cap: self.cap -= 1
+        else:
+            if self.hlp is not None and loc == "stringParam":
+                v = "".join(self.hlp[1]); k = self.hlp[0]; self.hlp = None
+                v = _hancom_cmd_url(v) if k == "Command" else v
+                if v.strip() and not _url_ok(v): self.bad = True
+                if self.hl is not None: self.hl[k] = v
+            elif self.hl is not None and loc == "fieldBegin" and depth == self.hld:
+                h = self.hl; self.hl = None
+                if not any((x or "").strip() for x in (h["name"], h["Path"], h["Command"])): self.bad = True   # 대상 없는 하이퍼링크
+
+def fields_bad(raw, kind):
+    """파트 전체(머리말·꼬리말·메모·주석·바탕쪽 등) 필드 검사 — 허용 밖이 하나라도 있으면 True."""
+    if len(raw) > MAX_PART: return True
+    f = _Fields(kind); p = pyexpat.ParserCreate(namespace_separator=" "); p.buffer_text = True; dep = [0]
+    def no(*a): raise KeepFail("DTD/엔티티 선언 금지")
+    def st(n, a): dep[0] += 1; f.start(n, a, dep[0])
+    def en(n): f.end(n, dep[0]); dep[0] -= 1
+    p.StartDoctypeDeclHandler = no; p.EntityDeclHandler = no
+    p.StartElementHandler = st; p.EndElementHandler = en; p.CharacterDataHandler = f.chars
+    try: p.Parse(raw, True)
+    except pyexpat.ExpatError: return True
+    return f.reset()
+
 class _Kid:
-    __slots__ = ("start", "end", "name", "refs", "unk", "num", "bad", "com", "instr")
+    __slots__ = ("start", "end", "name", "refs", "unk", "num", "bad", "com")
     def __init__(self, start, name):
         self.start = start; self.end = None; self.name = name; self.refs = set(); self.unk = 0; self.num = {}
-        self.bad = False; self.com = False; self.instr = []
+        self.bad = False; self.com = False
 
 _UNK_HWPX = {"rect", "ellipse", "line", "arc", "polygon", "curve", "connectLine", "container", "equation", "ole", "textart",
              "chart", "video", "compose", "dutmal", "bookmark", "memo", "fieldBegin", "footNote", "indexmark", "hiddenComment"}
@@ -104,9 +251,10 @@ def _scan(raw, kind):
     docx = kind == "docx"
     cdepth = 2 if docx else 1
     cname = (W_NS + " body") if docx else (HS_NS + " sec")
-    p = pyexpat.ParserCreate(namespace_separator=" ")
+    p = pyexpat.ParserCreate(namespace_separator=" "); p.buffer_text = True
     decls = {}; kids = []; outer = set(); stack = []
     st = {"n": 0, "cont": None, "cend": None, "inc": False, "root": None}
+    fld = _Fields(kind)
     def no(*a): raise KeepFail("DTD/엔티티 선언 금지")
     def nsdecl(prefix, uri):
         if not stack: decls[prefix or ""] = uri
@@ -120,10 +268,12 @@ def _scan(raw, kind):
             st["cont"] = p.CurrentByteIndex; st["inc"] = True
         elif st["inc"] and d == cdepth + 1:
             if len(kids) >= MAX_KEEP_KIDS: raise KeepFail("본문 요소가 너무 많음(K2 상한)")
+            if kids and fld.reset(): kids[-1].bad = True
             kids.append(_Kid(p.CurrentByteIndex, name)); cur = kids[-1]
         elif st["inc"] and d > cdepth + 1:
             cur = kids[-1]
         loc = stack[-1]
+        if cur is not None: fld.start(name, attrs, d)
         for k, v in attrs.items():
             if docx:
                 if k.startswith(R_NS + " "): (cur.refs if cur else outer).add(v)
@@ -132,16 +282,14 @@ def _scan(raw, kind):
             if docx:
                 if loc in _UNK_DOCX and (loc != "fldChar" or attrs.get(W_NS + " fldCharType") == "begin"): cur.unk += 1
                 if loc == "commentReference": cur.com = True
-                if loc == "fldSimple" and _BAD_FIELD.search(attrs.get(W_NS + " instr") or ""): cur.bad = True
                 if d == cdepth + 4 and stack[cdepth + 1] == "pPr" and stack[cdepth + 2] == "numPr" and loc in ("numId", "ilvl"):
                     cur.num[loc] = attrs.get(W_NS + " val")
             elif loc in _UNK_HWPX and (loc != "fieldBegin" or attrs.get("type") != "HYPERLINK"): cur.unk += 1
             if not docx and loc == "ole": cur.bad = True      # OLE 개체 = BinData 비그림 → 조각째 되씀 안 함(다시 만들고 셈)
     def chars(data):
-        if docx and stack and stack[-1] == "instrText" and kids and st["inc"]:
-            k = kids[-1]
-            if sum(len(x) for x in k.instr) < MAX_INSTR: k.instr.append(data)
+        if st["inc"] and kids: fld.chars(data)
     def end(name):
+        if st["inc"] and kids and len(stack) > cdepth: fld.end(name, len(stack))
         if st["inc"] and len(stack) == cdepth:
             st["cend"] = p.CurrentByteIndex; st["inc"] = False
         stack.pop()
@@ -150,9 +298,7 @@ def _scan(raw, kind):
     p.CharacterDataHandler = chars
     try: p.Parse(raw, True)
     except pyexpat.ExpatError: raise KeepFail("XML 손상")
-    for k in kids:   # 런마다 쪼개진 instrText(" DDE" "AUTO ")도 이어 붙여 판정
-        if k.instr and _BAD_FIELD.search("".join(k.instr)): k.bad = True
-        k.instr = None
+    if kids and fld.reset(): kids[-1].bad = True
     if st["cont"] is None or st["cend"] is None: raise KeepFail("본문 컨테이너 없음")
     if not docx and st["root"] != cname: raise KeepFail("hs:sec 아님")
     cstart = _tag_end(raw, st["cont"]) + 1
@@ -740,6 +886,9 @@ def _hwpx_package(ix, secs, hdr, bins):
         else: dropped.add(n)
     for n, data in keep.items():
         if n.endswith((".xml", ".hpf", ".rdf")) and n not in secs: _safe_xml(data)
+        if not n.startswith("BinData/"): _text_utf8(data, "xml")
+        if not n.startswith("BinData/") and data.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] == b"<" and fields_bad(data, "hwpx"):
+            raise KeepFail("허용 밖 필드: %s" % n)   # 구역·바탕쪽·header 등 XML 모양 파트 전부
     # manifest(content.hpf): 버린 파트 항목 빼고 새 그림 더함 — 바뀐 게 없으면 원본 바이트
     def drop_item(m):
         a = dict(re.findall(r'\b([\w.:-]+)="([^"]*)"', m.group(0)))
@@ -1114,6 +1263,12 @@ def _docx_keep(ix, nm, kept, items, G):
     _docx_closure(files, keep, [p for p in keep if p != "word/document.xml"], rels_out, settings_fix, added)
     if settings_fix and "word/settings.xml" in keep:
         added["word/settings.xml"] = re.sub(rb'<w:attachedTemplate\b[^<>]*/>', b"", files["word/settings.xml"])
+    for sp in [p for p in keep if not p.endswith(".rels")]:   # 편지 병합 원본(ODBC·UNC 연결문) = 열 때 SQL 실행 요청 → 제거. 이름 무관(설정 파트 개명 우회)
+        src = added.get(sp, files.get(sp))
+        if src is not None and _MM.search(src):
+            new = re.sub(rb"<([A-Za-z_][\w.-]*:)?mailMerge\b[^<>]*/>|<([A-Za-z_][\w.-]*:)?mailMerge\b.*?</\2mailMerge\s*>", b"", src, flags=re.S)
+            if _MM.search(new): raise KeepFail("settings 편지 병합 제거 불가")
+            added[sp] = new
     rels_out[drp] = files[drp] if (drp in files and final_rels == doc_rels) else _rels_xml(final_rels)
     keep[drp] = None
     out = {}
@@ -1129,6 +1284,12 @@ def _docx_keep(ix, nm, kept, items, G):
         if rp in files and rp not in out: out[rp] = files[rp]
     for p, data in out.items():
         if p.endswith((".xml", ".rels")) and p != "word/document.xml" and p not in added: _safe_xml(data)
+        _text_utf8(data, keep.get(p) or "")
+        ct = keep.get(p) or ""
+        if ct.startswith(("application/vnd.openxmlformats", "application/vnd.ms-word")) and ct.endswith("xml") and not re.fullmatch(r"[A-Za-z0-9_./-]{1,200}\.xml", p):
+            raise KeepFail("XML 파트 이름 이상: %s" % p)   # 확장자 바꿔 검사 우회 차단
+        if not p.endswith(".rels") and data.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] == b"<" and fields_bad(data, "docx"):
+            raise KeepFail("허용 밖 필드: %s" % p)   # 이름 무관 XML 모양 파트 전부(본문·머리말·메모·주석·설정)
     ctkeep = {p: c for p, c in keep.items() if p in out and not p.endswith(".rels")}
     out["[Content_Types].xml"] = _docx_ct(ctkeep, files, files.get("[Content_Types].xml"))
     order = [i.filename for i in ix["infos"] if i.filename in out] + sorted(p for p in out if p not in files)

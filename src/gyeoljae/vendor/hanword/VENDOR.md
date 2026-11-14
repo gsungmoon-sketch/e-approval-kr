@@ -1,7 +1,7 @@
 # Vendored hanword (embed build)
 
-- source: hanword 0.1.4, commit `f9fec8834e7da5f0e213ad2f54a4f61076bde0bb` (MIT, see LICENSE)
-- vendored: 2026-11-14 by `scripts/vendor_hanword.py` (re-run it to update; do not edit files here by hand)
+- source: hanword 0.1.9, commit `49be574ada88d6d55d4378f6d3284c323b8f34c2` (MIT, see LICENSE)
+- vendored: 2026-11-15 by `scripts/vendor_hanword.py` (re-run it to update; do not edit files here by hand)
 - protocol and rules: docs/embed.md
 
 ## Local patches
@@ -15,16 +15,16 @@ original Nanum Gothic/Myeongjo TTFs. Fonts upstream excluded (Nanum woff2 subset
 reserved name; Hamchorom; UnBatang) must not be added here.
 
 
-Python modules (import closure of hanword_embed, verified by a real import + HWPX/DOCX conversion in `python -I`): docconv, docxconv, hanword_core, hanword_embed, hanword_keep, hanword_model, hwpx_std, hwpxconv
+Python modules (import closure of hanword_embed, verified by a real import + HWPX/DOCX conversion in `python -I`): docconv, docxconv, hanword_core, hanword_embed, hanword_htmlparse, hanword_keep, hanword_model, hwpx_std, hwpxconv
 
 ## Files (sha256)
 
 9df84c5388ae0cc03d09b03b621494ad0623558c8b7f05ac1e4ea8fea96f700c  LICENSE
 875ae7ec1370ff9fb73701db7c334bddc8f93d8da12ec712da7854a71d970840  NOTICE-hwpx_skeleton.txt
 154ec4a9834895d442883116ed4f318d54185b0c3dc5119bf105f1d80cbee3ba  docconv.py
-bd45ddb4b5c6ff340c009e211dc2d04cd0606c8484aec67cc33219d4b02a8bf5  docs/embed.md
+84ff8672439e2b681a82fef6aae34d6f4d796e0cb03846cd8f4f400af8ca11ff  docs/embed.md
 d73640506ebdf9459debf3357c4ae39544a2010966b088a5bc15e77d8be41ba9  docxconv.py
-2868de7da13ddd14f45e9a50d82a649ce5ecff2e6e36d9e9590d6a1db4d3d1fa  editor.css
+da1a55dfe581b111f054752e5cd00c86ca482bf96ee0ea495ec8f58f70e4be3c  editor.css
 d16e46f657339eddf6db067cc566a5177927d42a1e46175c38782e1aa5ec2af5  embed.html
 5a2caca4ffdf931b8ae9e9b168deaa9d272e2124843fb94afb0c7c2ed17e4137  font/D2Coding-400.woff2
 7ad949ea04eab40c0d620db9a27c54e71d1c50f3d2bd899b3c887b18ea0151ee  font/D2Coding-700.woff2
@@ -39,15 +39,16 @@ c9a1e3ac69994d680883b53b1fd83d520733b704792522a932bfaa276117de45  font/NotoSerif
 504d6af6abb882acd912d47bafa383c4512a6c8c33635e4e8fb37111d9310941  font/NotoSerifKR-700.woff2
 fad853f7f47c6c8b103171e7193fa095708cdcd70850a71d93aa5379e8a61d63  font/Pretendard-400.woff2
 4609c3356e536fafe38f4add0daeceb3d8595d3057bce13c428c33ddbd43d362  font/Pretendard-700.woff2
-00db298c944cd763e14c8808ff4f76719c5cbee1188569f3079d7f5ece90dfed  hanword_core.py
-ff925b988f2bd371c40e1cfe925e497fcc10586a1085f4ff1760e0bea732e734  hanword_embed.py
-c9093bdaf8279b3a1dfd974999b8e93997a24a26aa51c874c7634d91d0ac0b30  hanword_keep.py
-46cb759764df99345d17bec6ac1f63ef9e9328b7cbb95ce601645bf67677562e  hanword_model.py
+0023f833b3a81425ef66e3de712f943decab5ae582de74da6e486e93d275d991  hanword_core.py
+1e4e07da5638c838287c6df9bfe4a1419e65ba489f275a9fc900cd1b60e15e54  hanword_embed.py
+3fa1ee6dac815353f810ddcd770f21fd185331f98fd1ec3962cc6198ebf3a44d  hanword_htmlparse.py
+4cd0731742395d1c8e8917c3307745e2ffbaf7efdee13a96e2884847773a1452  hanword_keep.py
+9181cffb72367c0152ea18cb20df1b615a61a95d54fa383c04e04b67821fd3aa  hanword_model.py
 e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb  html2canvas.min.js
 499d1503fac5f6de76a27bd70d76b33b63988a423443700a889112d284b9d2dd  htmlpdf.js
 2b411d308b37decd5d4d358c77ea44d594060a116405c26f261e8e3ea934efcc  hwpx_skeleton.hwpx
 ea138fa8dd1bef697295bd868de0cb92bfbaa2434d67129f98e0b97361c07b08  hwpx_std.py
-b99db93f4b67c5bbdfa063cb2022bd54a1d06df1a4bafc07667f403d1d66f1b8  hwpxconv.py
+95c499803bc639e4d5f7efdd046fa0e99637b0d8dff500efeee1799726e1c1a2  hwpxconv.py
 98ccf17aa10c20bb1301762618fcc9b6ab3a4e7f26b6071d64d0b41154df3875  jspdf.min.js
 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  licenses/Apache-2.0.txt
 4b0a53549b67d3144397e9f5975e35eb8db5d890f9dfa0e45654102a799f50cb  licenses/OFL-1.1.txt

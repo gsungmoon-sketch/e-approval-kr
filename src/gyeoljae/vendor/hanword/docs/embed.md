@@ -10,8 +10,9 @@ a copy of hanword on **its own origin** (for example under `/editor/`) and shows
 **Vendoring:** make the copy with `python3 scripts/export_embed.py DST` (from a tagged checkout). It
 copies the committed files minus `.publicignore` (no internal notes, no fonts that may not be
 redistributed) and checks the font list, `embed.html` and that no internal host names or paths are left.
-Shipped fonts and their licences: `licenses/README.md`. `editor.css` still declares the unshipped families
-(함초롬, 은바탕; Nanum uses the shipped original TTFs instead of the web subsets); those requests 404 and the browser falls back to the shipped fonts.
+Shipped fonts and their licences: `licenses/README.md`. The export (and the public build) rewrites `editor.css` so it
+declares only shipped font files (`scripts/fontcss.py`): no 404 font requests; 함초롬·은바탕 fall back to the shipped fonts,
+Nanum uses the original TTFs.
 
 **Entry: `embed.html`.** It is generated from `index.html` by `python3 scripts/build_embed.py` (tests fail if
 it is stale) and is meant to be vendored as is: no SEO/public-host lines (canonical, og:, twitter:, ld+json,
