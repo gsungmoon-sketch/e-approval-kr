@@ -16,6 +16,7 @@ from . import core
 from . import policy as pol
 from .core import App, BOX_KO, BOXES, BOARDS, GyeolError
 from .cli_admin import NOT_MINE, add_admin_parsers, admin_menu, run_admin, setup
+from .cli_filing import add_filing_parsers, run_filing
 
 
 def _utf8_console():
@@ -102,6 +103,7 @@ def build_parser():
     s = sp.add_parser("check-audit-head", help="보관한 머리값이 체인에 그대로 있는지 확인")
     s.add_argument("seq", type=int); s.add_argument("hash")
     add_admin_parsers(sp)
+    add_filing_parsers(sp)
 
     s = sp.add_parser("delegate", help="대결(결재 위임)")
     ss = s.add_subparsers(dest="sub", required=True)
@@ -218,6 +220,9 @@ def run(args, app: App):
         return serve(app, host, port, tuple(args.https) if args.https else None)
     a = _actor(args)
     rc = run_admin(args, app, a, out)
+    if rc is not NOT_MINE:
+        return rc
+    rc = run_filing(args, app, a, out)
     if rc is not NOT_MINE:
         return rc
     if c == "delegate":

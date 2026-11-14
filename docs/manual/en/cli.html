@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CLI reference - e-approval-kr Manual</title><link rel="stylesheet" href="../manual.css"></head><body>
 <nav class="top"><div class="in"><a href="index.html"><b>Contents</b></a><a href="../index.html">Language</a><span class="sp"></span><a href="../ko/cli.html">한국어</a></div></nav>
-<div class="wrap"><h1>9. CLI reference</h1><p>The help texts in this chapter are the actual output of <code>gyeol &lt;command&gt; --help</code> (version 0.2.2, checked on a server). Note that <b>the help text itself is in Korean</b>; an English summary of each command is given above its help. On installed packages use <code>e-approval-kr</code> instead of <code>gyeol</code>, and on Linux/macOS service installs use <code>sudo e-approval-kr-admin</code>.</p>
+<div class="wrap"><h1>9. CLI reference</h1><p>The help texts in this chapter are the actual output of <code>gyeol &lt;command&gt; --help</code> (version 0.2.3, checked on a server). Note that <b>the help text itself is in Korean</b>; an English summary of each command is given above its help. On installed packages use <code>e-approval-kr</code> instead of <code>gyeol</code>, and on Linux/macOS service installs use <code>sudo e-approval-kr-admin</code>.</p>
 <h2>Common usage</h2>
 <pre>gyeol [--data DATA_DIR] [-u USER_ID] [--json] &lt;command&gt; ...</pre>
 <ul><li><code>--data</code>: data folder (default: environment variable <code>GYEOLJAE_DATA</code>, or the per-OS default).</li>
@@ -558,7 +558,7 @@ options:
   --off</pre><h2>Drafting and approval</h2><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>draft</code></td><td>write a draft (--submit to submit at once)</td></tr><tr><td><code>edit</code></td><td>edit a draft (draft/withdrawn/rejected)</td></tr><tr><td><code>submit</code></td><td>submit</td></tr><tr><td><code>withdraw</code></td><td>withdraw</td></tr><tr><td><code>approve</code></td><td>approve</td></tr><tr><td><code>reject</code></td><td>reject</td></tr><tr><td><code>delegate</code></td><td>delegation (approve on behalf)</td></tr><tr><td><code>list</code></td><td>document boxes</td></tr><tr><td><code>show</code></td><td>show a document</td></tr><tr><td><code>search</code></td><td>search</td></tr><tr><td><code>number</code></td><td>find by document number</td></tr></table><h3 id="c-draft"><code>draft</code></h3><p>write a draft (--submit to submit at once).</p><pre>usage: gyeol draft [-h] --title TITLE [--body BODY] [--body-file BODY_FILE] [--line LINE]
                    [--type TYPE] [--amount AMOUNT] [--cc CC] [--attach [ATTACH ...]] [--dept-open]
                    [--submit] [--form FORM] [--field 키=값] [--row 표키:열=값;열=값]
-                   [--fields-json FIELDS_JSON]
+                   [--fields-json FIELDS_JSON] [--doc-html FILE]
 
 options:
   -h, --help            show this help message and exit
@@ -576,9 +576,11 @@ options:
   --field 키=값           양식 항목. 기간은 2026-11-16~2026-11-18
   --row 표키:열=값;열=값      표 행 추가. 예: items:item=모니터;qty=2;price=30만
   --fields-json FIELDS_JSON
-                        항목 전체를 JSON 파일로</pre><h3 id="c-edit"><code>edit</code></h3><p>edit a draft (draft/withdrawn/rejected).</p><pre>usage: gyeol edit [-h] [--title TITLE] [--body BODY] [--body-file BODY_FILE] [--line LINE]
+                        항목 전체를 JSON 파일로
+  --doc-html FILE       편집기 문서 HTML(서식 칸 data-field 에서 항목을 뽑아 검증)</pre><h3 id="c-edit"><code>edit</code></h3><p>edit a draft (draft/withdrawn/rejected).</p><pre>usage: gyeol edit [-h] [--title TITLE] [--body BODY] [--body-file BODY_FILE] [--line LINE]
                   [--cc CC] [--attach [ATTACH ...]] [--remove [REMOVE ...]] [--type TYPE]
                   [--amount AMOUNT] [--field 키=값] [--row 표키:열=값;열=값] [--fields-json FIELDS_JSON]
+                  [--doc-html FILE]
                   id
 
 positional arguments:
@@ -598,7 +600,8 @@ options:
   --field 키=값           양식 항목. 기간은 2026-11-16~2026-11-18
   --row 표키:열=값;열=값      표 행 추가. 예: items:item=모니터;qty=2;price=30만
   --fields-json FIELDS_JSON
-                        항목 전체를 JSON 파일로</pre><h3 id="c-submit"><code>submit</code></h3><p>submit.</p><pre>usage: gyeol submit [-h] id
+                        항목 전체를 JSON 파일로
+  --doc-html FILE       편집기 문서 HTML(서식 칸 data-field 에서 항목을 뽑아 검증)</pre><h3 id="c-submit"><code>submit</code></h3><p>submit.</p><pre>usage: gyeol submit [-h] id
 
 positional arguments:
   id
@@ -659,7 +662,7 @@ options:
 
 options:
   -h, --help            show this help message and exit
-  --box {inbox,progress,done,rejected,cc,drafts,dept}</pre><h3 id="c-show"><code>show</code></h3><p>show a document.</p><pre>usage: gyeol show [-h] [--file FILE] [-o OUTPUT] id
+  --box {inbox,progress,done,rejected,cc,drafts,dept}</pre><h3 id="c-show"><code>show</code></h3><p>show a document.</p><pre>usage: gyeol show [-h] [--file FILE] [-o OUTPUT] [--html] id
 
 positional arguments:
   id
@@ -667,7 +670,8 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   --file FILE           첨부 번호 저장
-  -o OUTPUT, --output OUTPUT</pre><h3 id="c-search"><code>search</code></h3><p>search.</p><pre>usage: gyeol search [-h] [-q QUERY] [--title TITLE] [--drafter DRAFTER] [--dept DEPT]
+  -o OUTPUT, --output OUTPUT
+  --html                편집기 문서 HTML 출력</pre><h3 id="c-search"><code>search</code></h3><p>search.</p><pre>usage: gyeol search [-h] [-q QUERY] [--title TITLE] [--drafter DRAFTER] [--dept DEPT]
                     [--status {draft,pending,done,rejected,withdrawn}] [--from DATE_FROM]
                     [--to DATE_TO] [--number NUMBER] [--type TYPE]
 
@@ -739,10 +743,12 @@ positional arguments:
   id
 
 options:
-  -h, --help  show this help message and exit</pre><h3 id="c-folder"><code>folder</code></h3><p>my storage (personal folders).</p><pre>usage: gyeol folder [-h] {list,create,rename,delete,show,add,remove} ...
+  -h, --help  show this help message and exit</pre><h3 id="c-folder"><code>folder</code></h3><p>my storage (personal folders).</p><pre>usage: gyeol folder [-h] {list,create,rename,delete,show,add,remove,tag,untag} ...
 
 positional arguments:
-  {list,create,rename,delete,show,add,remove}
+  {list,create,rename,delete,show,add,remove,tag,untag}
+    tag                 문서를 내 폴더에 넣기(문서 화면 &#x27;폴더 저장&#x27;과 같음)
+    untag               문서를 내 폴더에서 빼기
 
 options:
   -h, --help            show this help message and exit
@@ -799,6 +805,173 @@ usage: gyeol folder remove [-h] id doc
 positional arguments:
   id
   doc
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder tag [-h] doc id
+
+positional arguments:
+  doc
+  id          폴더 id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol folder untag [-h] doc id
+
+positional arguments:
+  doc
+  id          폴더 id
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-dclass"><code>dclass</code></h3><p>department classification: list/add/rename/delete a department's classes; get/set a document's class.</p><pre>usage: gyeol dclass [-h] {list,add,rename,delete,get,set} ...
+
+positional arguments:
+  {list,add,rename,delete,get,set}
+    list                부서 분류 나무(문서 수 포함). 다른 부서는 관리자만
+    add                 분류 추가(그 부서 부서장급·관리자)
+    rename              분류 이름 바꾸기
+    delete              분류 삭제(그 분류 문서는 미분류가 됨)
+    get                 문서의 분류
+    set                 문서의 분류 바꾸기(기안 중엔 기안자, 그 뒤엔 부서장급·문서관리 담당·관리자)
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol dclass list [-h] [--dept DEPT]
+
+options:
+  -h, --help   show this help message and exit
+  --dept DEPT  부서 코드(기본: 내 부서)
+
+usage: gyeol dclass add [-h] [--parent PARENT] [--dept DEPT] name
+
+positional arguments:
+  name
+
+options:
+  -h, --help       show this help message and exit
+  --parent PARENT  상위 분류 id
+  --dept DEPT      부서 코드(기본: 내 부서)
+
+usage: gyeol dclass rename [-h] id name
+
+positional arguments:
+  id
+  name
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dclass delete [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dclass get [-h] doc
+
+positional arguments:
+  doc
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol dclass set [-h] doc CLASS
+
+positional arguments:
+  doc
+  CLASS       분류 id 또는 none(미분류)
+
+options:
+  -h, --help  show this help message and exit</pre><h3 id="c-project"><code>project</code></h3><p>project boxes: list/add/show/edit, members, status; tag/untag a document.</p><pre>usage: gyeol project [-h] {list,add,show,edit,members,status,tag,untag} ...
+
+positional arguments:
+  {list,add,show,edit,members,status,tag,untag}
+    list                참여 중인 사업
+    add                 사업 만들기(관리자·부서장급)
+    show                사업과 그 문서(내가 원래 볼 수 있는 문서만)
+    edit                이름·코드 바꾸기(만든 사람·관리자)
+    members             참여자 바꾸기(준 쪽만 전체 교체, 빈 값(&#x27;&#x27;)=비움)
+    status              진행(open)/종료(closed)
+    tag                 문서를 사업에 넣기(문서 분류 권한 + 참여 중인 진행 사업)
+    untag               문서를 사업에서 빼기
+
+options:
+  -h, --help            show this help message and exit
+
+usage: gyeol project list [-h] [--all] [--status {open,closed}]
+
+options:
+  -h, --help            show this help message and exit
+  --all                 전체(관리자)
+  --status {open,closed}
+
+usage: gyeol project add [-h] [--code CODE] [--depts DEPTS] [--users USERS] name
+
+positional arguments:
+  name
+
+options:
+  -h, --help     show this help message and exit
+  --code CODE    사업 코드(영문·숫자·_.- 20자)
+  --depts DEPTS  참여 부서 코드 a,b
+  --users USERS  참여자 아이디 a,b
+
+usage: gyeol project show [-h] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol project edit [-h] [--name NAME] [--code CODE] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help   show this help message and exit
+  --name NAME
+  --code CODE  빈 값(&#x27;&#x27;)이면 코드 지움
+
+usage: gyeol project members [-h] [--depts DEPTS] [--users USERS] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help     show this help message and exit
+  --depts DEPTS  참여 부서 코드 a,b
+  --users USERS  참여자 아이디 a,b
+
+usage: gyeol project status [-h] id {open,closed}
+
+positional arguments:
+  id
+  {open,closed}
+
+options:
+  -h, --help     show this help message and exit
+
+usage: gyeol project tag [-h] doc id
+
+positional arguments:
+  doc
+  id          사업 id
+
+options:
+  -h, --help  show this help message and exit
+
+usage: gyeol project untag [-h] doc id
+
+positional arguments:
+  doc
+  id          사업 id
 
 options:
   -h, --help  show this help message and exit</pre><h3 id="c-mail"><code>mail</code></h3><p>internal mail.</p><pre>usage: gyeol mail [-h] {list,send,read,reply,replyall,forward,trash,restore,purge,file,flush} ...

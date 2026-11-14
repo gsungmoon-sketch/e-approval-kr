@@ -14,10 +14,11 @@ import sys
 import threading
 import urllib.parse
 from http import HTTPStatus
-from pathlib import Path
+from pathlib import PurePosixPath
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import core
+from . import pkgfiles
 from . import policy as pol
 from .paper import PAGE_CSS, PAPER_CSS
 from .core import App, BOX_KO, BOXES, BOARDS, GyeolError
@@ -29,10 +30,8 @@ _SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT)
 COOKIE = "gyeol_sid"
 SECURE_COOKIE = os.environ.get("GYEOLJAE_COOKIE_SECURE") == "1"
 TRUST_PROXY = os.environ.get("GYEOLJAE_TRUST_PROXY") == "1"
-_PKG = Path(__file__).resolve().parent
 # 문서 편집기(iframe, 같은 출처): 반입한 hanword(vendor/hanword, scripts/vendor_hanword.py). .py·.md 등은 CTYPES 밖 → 404
-EDITOR_DIR = _PKG / "vendor" / "hanword"
-STATIC_DIR = _PKG / "static"
+EDITOR_BASE, STATIC_BASE = "vendor/hanword", "static"   # 패키지 기준 폴더(pkgfiles.find, .pyz 안에서도 같음)
 CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
           ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2",
           ".ttf": "font/ttf", ".wasm": "application/wasm"}
@@ -40,6 +39,7 @@ _BASE_CSP = "default-src 'none'; style-src 'self'; img-src 'self'; form-action '
 # 스크립트는 편집기 페이지와 그것을 담는 기안 화면에만, 'self' 정적 파일만(인라인·eval 없음)
 CSP = {None: _BASE_CSP,
        "host": _BASE_CSP + "; script-src 'self'; frame-src 'self'",
+       "script": _BASE_CSP + "; script-src 'self'",   # 작은 화면 보조 스크립트(static/*.js)만 — 예: 참여자 고르기
        "doc": _BASE_CSP.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'").replace(
            "img-src 'self'", "img-src 'self' data:"),
        # hanword embed.html: 'self' 스크립트만, embed.html 의 style="" 속성 때문에 style 만 'unsafe-inline', /api 호출 없음
@@ -92,6 +92,9 @@ pre.body{white-space:pre-wrap;word-break:break-word;font:inherit;margin:0}
 input[type=text],input[type=search],input[type=password],input[type=date],input[type=number],input[type=file],textarea,select{width:100%;padding:7px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--fg);font:inherit}
 .quick input[type=text]{width:auto;flex:1}
 textarea{min-height:180px}label{display:block;margin:8px 0 3px;font-weight:600}label.pick{display:inline-flex}
+fieldset.picker{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 10px}fieldset.picker input.pk-q{margin:4px 0}
+.pk-list{max-height:15em;overflow:auto;display:flex;flex-wrap:wrap;align-content:flex-start}.pk-list label.pick{margin:3px;padding:5px 10px;font-weight:400}
+.pk-list label.pick[hidden]{display:none}details.pk-bulk{margin:8px 0}
 button{padding:7px 14px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:#fff;font:inherit;cursor:pointer}
 button.sec{background:var(--card);color:var(--fg);border-color:var(--line)}button.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 form.inline{display:inline}ul.atts{list-style:none;padding:0;margin:4px 0}ul.atts li{padding:2px 0}label.inline{display:inline}.row{display:flex;flex-wrap:wrap;gap:8px}.row>*{flex:1 1 160px}
@@ -204,7 +207,7 @@ def make_handler(app: App):
                 u = urllib.parse.urlsplit(self.path)
                 self.route = u.path
                 self.qs = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
-                self.form, self.files = {}, []
+                self.form, self.files, self.multi = {}, [], {}
                 self._aside = None
                 self._csp = None
                 self.sess = app.session(self.cookie())
@@ -252,9 +255,19 @@ def make_handler(app: App):
             ct = self.headers.get("Content-Type", "")
             if ct.startswith("multipart/form-data"):
                 self.form, self.files = parse_multipart(data, ct)
+                self.multi = getattr(self.form, "multi", {})
             else:
-                self.form = {k: v[0] for k, v in urllib.parse.parse_qs(data.decode("utf-8", "replace"),
-                                                                       keep_blank_values=True).items()}
+                q = urllib.parse.parse_qs(data.decode("utf-8", "replace"), keep_blank_values=True)
+                self.form = {k: v[0] for k, v in q.items()}
+                self.multi = q  # 같은 이름 여러 값(체크박스 목록) — form_list() 로 읽음
+
+        def form_list(self, name):
+            """체크박스처럼 같은 이름이 여러 번 온 값 전부(없으면 [])."""
+            v = getattr(self, "multi", {}).get(name)
+            if v is None:
+                v = self.form.get(name)
+                return [] if v is None else v if isinstance(v, list) else [v]
+            return list(v)
 
         def check_csrf(self):
             origin = self.headers.get("Origin")
@@ -290,7 +303,7 @@ def make_handler(app: App):
                 doc_body = shell(self, app, me, body, box)
             doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8>"
                    f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=10'></head>"
+                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=11'></head>"
                    f"<body>{doc_body}</body></html>")
             return doc.encode("utf-8")
 
@@ -306,8 +319,8 @@ def make_handler(app: App):
             if p == "/paper.css":
                 return Resp(200, PAGE_CSS.encode(), {"Content-Type": "text/css; charset=utf-8",
                                                      "Cache-Control": "public, max-age=86400"})
-            if p == "/static/editor-host.js":
-                return self.static_file(STATIC_DIR, "editor-host.js")
+            if p.startswith("/static/"):  # 우리 스크립트(static/*.js) — 로그인 전에도(내용에 비밀 없음)
+                return self.static_file(STATIC_BASE, p[len("/static/"):])
             if p == "/healthz":
                 from . import __version__
                 return Resp(200, json.dumps({"ok": True, "version": __version__}).encode(),
@@ -330,7 +343,7 @@ def make_handler(app: App):
                 q = urllib.parse.urlsplit(self.path).query
                 return redirect("/editor/embed.html" + ("?" + q if q else ""))
             if p.startswith("/editor/"):
-                return self.static_file(EDITOR_DIR, p[len("/editor/"):], editor=True)
+                return self.static_file(EDITOR_BASE, p[len("/editor/"):], editor=True)
             from .web_home import route as home_route
             hr = home_route(self, app, user, p)
             if hr is not None:
@@ -373,17 +386,17 @@ def make_handler(app: App):
             raise core.NotFound("페이지 없음")
 
         def static_file(self, base, name, editor=False):
-            """편집기·정적 파일(패키지 안 디렉터리만, .. 차단). 편집기 HTML 만 SAMEORIGIN 틀 허용 + script-src 'self'."""
-            seg = r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*"  # 점은 이름 안에만('..'·숨김 파일 불가)
-            if not re.fullmatch(rf"(?:{seg}/)*{seg}\.[a-z0-9]{{1,5}}", name):
+            """편집기·정적 파일(패키지 안 디렉터리만, .. 차단 — pkgfiles.find). 폴더 설치와 .pyz 모두.
+            편집기 HTML 만 SAMEORIGIN 틀 허용 + script-src 'self'."""
+            fp = pkgfiles.find(base, name)
+            suffix = PurePosixPath(name).suffix
+            ct = CTYPES.get(suffix)
+            if not ct or fp is None:
                 raise core.NotFound("파일 없음")
-            fp = (base / name).resolve()
-            ct = CTYPES.get(fp.suffix)
-            if not ct or base.resolve() not in fp.parents or not fp.is_file():
-                raise core.NotFound("파일 없음")
-            if editor and fp.suffix == ".html":
+            if editor and suffix == ".html":
                 self._csp = "editor"
-            cache = "private, max-age=604800" if editor and fp.parent.name == "font" else "no-cache"  # 글꼴 24MB
+            font = editor and PurePosixPath(name).parent.name == "font"
+            cache = "private, max-age=604800" if font else "no-cache"  # 글꼴 24MB
             return Resp(200, fp.read_bytes(), {"Content-Type": ct, "Cache-Control": cache})
 
         def r_login(self):
@@ -614,12 +627,6 @@ def make_handler(app: App):
             from .web_ui import doc_view
             return doc_view(self, app, user, m)
 
-        def form_list(self, name):
-            v = self.form.get(name)
-            if v is None:
-                return []
-            return v if isinstance(v, list) else [v]
-
         def r_search(self, user):
             q = self.qs
             rows, shown = [], any(q.get(k) for k in ("q", "title", "drafter", "dept", "status", "from", "to", "number"))
@@ -777,12 +784,17 @@ def make_handler(app: App):
     return H
 
 
+class _Form(dict):
+    """multipart 폼: 이름당 첫 값(remove 만 목록) + .multi = 이름 → 모든 값."""
+
+
 def parse_multipart(data: bytes, ctype: str):
     m = re.search(r'boundary="?([^";]+)"?', ctype)
     if not m:
         raise core.Invalid("multipart boundary 없음")
     delim = b"\r\n--" + m.group(1).encode("latin-1")
-    form, files = {}, []
+    form, files, multi = _Form(), [], {}
+    form.multi = multi
     parts = (b"\r\n" + data).split(delim)
     for part in parts[1:]:
         if part.startswith(b"--"):
@@ -802,6 +814,7 @@ def parse_multipart(data: bytes, ctype: str):
                 files.append((fn.group(1), body))
             continue
         val = body.decode("utf-8", "replace")
+        multi.setdefault(name, []).append(val)
         if name == "remove":
             form.setdefault(name, []).append(val)
         else:

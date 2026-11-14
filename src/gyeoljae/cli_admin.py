@@ -123,6 +123,10 @@ def add_admin_parsers(sp):
     x = ss.add_parser("show"); x.add_argument("id", type=int)
     x = ss.add_parser("add"); x.add_argument("id", type=int); x.add_argument("doc", type=int)
     x = ss.add_parser("remove"); x.add_argument("id", type=int); x.add_argument("doc", type=int)
+    x = ss.add_parser("tag", help="문서를 내 폴더에 넣기(문서 화면 '폴더 저장'과 같음)"); x.add_argument("doc", type=int)
+    x.add_argument("id", type=int, help="폴더 id")
+    x = ss.add_parser("untag", help="문서를 내 폴더에서 빼기"); x.add_argument("doc", type=int)
+    x.add_argument("id", type=int, help="폴더 id")
     s = sp.add_parser("mail", help="사내 메일(편지함)")
     ss = s.add_subparsers(dest="sub", required=True)
     x = ss.add_parser("list"); x.add_argument("--folder", default="inbox", choices=["inbox", "sent", "drafts", "trash"])
@@ -367,6 +371,10 @@ def run_admin(args, app, a, out):
             r = app.folder_docs(a, args.id)
             from .cli import fmt_rows
             return out(args, r, f"[{r['name']}]\n" + fmt_rows(r["docs"]))
+        if s in ("tag", "untag"):
+            from .cli_filing import folder_tag
+            r = folder_tag(app, a, args.doc, args.id, on=s == "tag")
+            return out(args, r, f"#{args.doc} 내 폴더: {','.join(map(str, r['folders'])) or '(없음)'}")
         getattr(app, "folder_" + s)(a, args.id, args.doc)
         return out(args, {"ok": True}, "ok")
     if c == "emp":

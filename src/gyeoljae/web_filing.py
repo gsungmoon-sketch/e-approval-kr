@@ -10,10 +10,8 @@ from .web import esc, redirect
 
 
 def _list(h, name):
-    v = h.form.get(name)
-    if v is None:
-        return []
-    return v if isinstance(v, list) else [v]
+    """체크박스 목록 값 전부(같은 이름 여러 개)."""
+    return h.form_list(name)
 
 
 def _indent(r):
@@ -202,7 +200,42 @@ def _split(s):
     return [x.strip() for x in re.split(r"[,\s]+", s or "") if x.strip()]
 
 
-def _project_form(h, action, p=None, label="만들기"):
+def _member_picker(h, app, p):
+    """참여 부서·참여자 고르기: 서버가 그린 체크박스 목록(+ static/member-picker.js 검색 거르기, 없어도 동작).
+    목록은 활성 부서·사용자만 — 이미 참여 중인데 비활성이 된 것은 빠지지 않게 체크된 채로 함께(비활성 표시).
+    '여러 개 한꺼번에' 칸(쉼표·공백 구분 부서 코드/아이디)은 예전 입력 방식 그대로이며 체크한 것과 합쳐진다."""
+    cur_d, cur_u = set(p.get("depts") or []), set(p.get("users") or [])
+    depts = [d for d in app.list_depts(include_inactive=True) if d["active"] or d["code"] in cur_d]
+    users = [u for u in app.list_users() if u["active"] or u["username"] in cur_u]
+    depts.sort(key=lambda d: (d["code"] not in cur_d, d["code"]))
+    users.sort(key=lambda u: (u["username"] not in cur_u, u["dept"], u["name"], u["username"]))
+
+    def item(name, val, on, text, sub, q, off):
+        return (f"<label class=pick data-q='{esc(q.lower())}'><input type=checkbox name={name} value='{esc(val)}'"
+                f"{' checked' if on else ''}> {esc(text)} <span class=mut>{esc(sub)}</span>"
+                f"{' <span class=mut>(비활성)</span>' if off else ''}</label>")
+    dl = "".join(item("pick_dept", d["code"], d["code"] in cur_d, d["name"], d["code"], f"{d['name']} {d['code']}",
+                      not d["active"]) for d in depts)
+    ul = "".join(item("pick_user", u["username"], u["username"] in cur_u, u["name"],
+                      f"{u['username']} · {u['dept']}{' · ' + u['title'] if u.get('title') else ''}",
+                      f"{u['name']} {u['username']} {u['dept']} {u.get('title') or ''}", not u["active"])
+                 for u in users)
+    h._csp = "script"
+    return (f"<input type=hidden name=members value=1>"
+            f"<fieldset class=picker data-picker><legend>참여 부서 <span class='mut pk-n'></span></legend>"
+            f"<input type=search class=pk-q hidden placeholder='부서 이름·코드 검색' aria-label='참여 부서 검색'>"
+            f"<div class=pk-list>{dl or '<span class=mut>부서가 없습니다</span>'}</div></fieldset>"
+            f"<fieldset class=picker data-picker><legend>참여자 <span class='mut pk-n'></span></legend>"
+            f"<input type=search class=pk-q hidden placeholder='이름·아이디·부서 검색' aria-label='참여자 검색'>"
+            f"<div class=pk-list>{ul or '<span class=mut>사용자가 없습니다</span>'}</div></fieldset>"
+            f"<details class=pk-bulk><summary>여러 개 한꺼번에 넣기(쉼표 구분 붙여넣기)</summary>"
+            f"<p class=mut>엑셀·CSV 에서 복사한 부서 코드·아이디를 붙여넣으면 위에서 체크한 것과 합쳐집니다.</p>"
+            f"<label for=pj-d>참여 부서 코드</label><input type=text id=pj-d name=depts placeholder='예: DEV,SAL'>"
+            f"<label for=pj-u>참여자 아이디</label><input type=text id=pj-u name=users placeholder='예: kim,lee'>"
+            f"</details><script src='/static/member-picker.js?v=1' defer></script>")
+
+
+def _project_form(h, app, action, p=None, label="만들기"):
     p = p or {}
     st = ""
     if p.get("id"):
@@ -213,11 +246,13 @@ def _project_form(h, action, p=None, label="만들기"):
             f"<div class=row><div><label for=pj-n>이름</label><input type=text id=pj-n name=name maxlength=60 required "
             f"value='{esc(p.get('name'))}'></div><div><label for=pj-c>코드 <span class=mut>(선택)</span></label>"
             f"<input type=text id=pj-c name=code maxlength=20 value='{esc(p.get('code'))}'></div></div>"
-            f"<label for=pj-d>참여 부서 <span class=mut>(부서 코드, 쉼표 구분)</span></label><input type=text id=pj-d "
-            f"name=depts value='{esc(','.join(p.get('depts') or []))}'>"
-            f"<label for=pj-u>참여자 <span class=mut>(아이디, 쉼표 구분)</span></label><input type=text id=pj-u name=users "
-            f"list=users value='{esc(','.join(p.get('users') or []))}'>{st}<p><button>{label}</button></p></form>"
-            f"{h.user_datalist()}")
+            f"{_member_picker(h, app, p)}{st}<p><button>{label}</button></p></form>")
+
+
+def _members(h):
+    """체크한 부서·참여자 + '여러 개 한꺼번에' 칸(쉼표·공백 구분). 검증은 core(_project_members)가."""
+    f = h.form
+    return _list(h, "pick_dept") + _split(f.get("depts")), _list(h, "pick_user") + _split(f.get("users"))
 
 
 def projects_page(h, app, user, p):
@@ -225,13 +260,14 @@ def projects_page(h, app, user, p):
     f = h.form
     if p == "/docs/project":
         if h.method == "POST":
-            r = app.project_create(user, f.get("name"), f.get("code"), _split(f.get("depts")), _split(f.get("users")))
+            ds, us = _members(h)
+            r = app.project_create(user, f.get("name"), f.get("code"), ds, us)
             return redirect(f"/docs/project/{r['id']}")
         rows = app.project_list(user, all_=me["role"] == "admin")
         tr = "".join(f"<tr><td><a href='/docs/project/{x['id']}'>{esc(x['name'])}</a> <span class=mut>{esc(x['code'] or '')}"
                      f"</span></td><td>{esc(x['status_ko'])}</td><td>{esc(', '.join(x['depts']) or '-')}</td>"
                      f"<td>{len(x['users'])}명</td></tr>" for x in rows)
-        new = _project_form(h, "/docs/project") if me["role"] == "admin" or me.get("is_head") else ""
+        new = _project_form(h, app, "/docs/project") if me["role"] == "admin" or me.get("is_head") else ""
         return h.ok("사업 문서함", f"<h2>문서함 › 사업 문서함</h2><div class=card><table><tr><th>사업</th><th>상태</th>"
                                   f"<th>참여 부서</th><th>참여자</th></tr>{tr or '<tr><td class=mut>참여 중인 사업이 없습니다</td></tr>'}"
                                   f"</table><p class=mut>사업 문서함에는 내가 원래 볼 수 있는 문서만 보입니다.</p></div>{new}")
@@ -240,15 +276,16 @@ def projects_page(h, app, user, p):
         raise core.NotFound("페이지 없음")
     pid = int(m.group(1))
     if h.method == "POST":
-        app.project_update(user, pid, name=f.get("name"), code=f.get("code", ""), depts=_split(f.get("depts")),
-                           users=_split(f.get("users")), status=f.get("status") or None)
+        ds, us = _members(h)
+        app.project_update(user, pid, name=f.get("name"), code=f.get("code", ""), depts=ds, users=us,
+                           status=f.get("status") or None)
         return redirect(f"/docs/project/{pid}")
     r = app.project_docs(user, pid)
     pj = r["project"]
     info = (f"<p class=mut>{esc(pj['status_ko'])}{' · 코드 ' + esc(pj['code']) if pj['code'] else ''} · 참여 부서 "
             f"{esc(', '.join(pj['depts']) or '-')} · 참여자 {esc(', '.join(pj['users']) or '-')} · 만든 사람 "
             f"{esc(pj['created_by'])}</p>")
-    mng = _project_form(h, f"/docs/project/{pid}", pj, "저장") if pj["can_manage"] else ""
+    mng = _project_form(h, app, f"/docs/project/{pid}", pj, "저장") if pj["can_manage"] else ""
     return h.ok(pj["name"], f"<h2>사업 문서함 › {esc(pj['name'])}</h2>{info}"
                             f"{h.table(r['docs'], f'/docs/project/{pid}')}{mng}")
 

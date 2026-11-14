@@ -5,7 +5,7 @@ input·svg·math 등은 내용까지 통째로 버린다. 속성도 허용 목�
 허용 목록은 hanword 편집기(vendor/hanword/docs/embed.md, hanword_embed.sanitize_html)와 같거나 넓다 — 정본은
 hanword.canonical_html(= hanword 정화 → 이 정화)이고, 이 두 번째 통과가 hanword 출력을 바꾸지 않아야 한다.
 img src 는 data:image/(png|jpeg|gif|webp|bmp);base64 만(같은 출처 URL 도 금지). a href 는 http(s)/mailto/# 만.
-data-field/data-row/data-sum 은 td·th·tr·table·span 에만, 이름(목록)으로만 — 평가하지 않음. 2MB·중첩 64단 제한.
+data-field/data-row/data-sum 은 td·th·tr·table·span 에만, 이름(목록)으로만 — 평가하지 않음. 크기는 사진(img src data:) 뺀 글 2MB·사진 포함 8MB(정화 결과 기준)·중첩 64단 제한.
 """
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ import html
 import re
 from html.parser import HTMLParser
 
-MAX_SIZE = 2 * 1024 * 1024
+MAX_SIZE = 2 * 1024 * 1024        # 사진 없는 본문
+MAX_SIZE_IMG = 8 * 1024 * 1024    # 사진(data:image) 이 든 본문 — 편집기 화면이 사진을 1600px·JPEG 로 줄여 보냄
+_HAS_IMG = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*[\"']?\s*data:image/", re.I)
 MAX_DEPTH = 64
 
 ALLOWED = {"p", "div", "span", "br", "hr", "b", "strong", "i", "em", "u", "s", "strike", "del", "sub", "sup",
@@ -110,6 +112,7 @@ class _Cleaner(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.out, self.stack, self.skip = [], [], []
+        self.img_bytes = 0  # 남긴 img src(data:image) 바이트 — 본문 글 크기(2MB)에서 뺌
 
     def _start(self, tag, attrs, closed):
         if self.skip:
@@ -132,8 +135,11 @@ class _Cleaner(HTMLParser):
             cv = _clean_attr(tag, k, v)
             if cv is not None:
                 kept.append((k, cv))
-        if tag == "img" and not any(k == "src" for k, _ in kept):
-            return
+        if tag == "img":
+            src = next((v for k, v in kept if k == "src"), None)
+            if src is None:
+                return
+            self.img_bytes += len(src)  # SRC_DATA 통과 = ASCII 라 글자 수 = 바이트
         if tag == "a":  # 링크는 새 창에서도 opener 없이(hanword 와 같음), href 없으면 rel 도 없음
             kept = [(k, v) for k, v in kept if k != "rel"]
             if any(k == "href" for k, _ in kept):
@@ -184,13 +190,39 @@ class _Cleaner(HTMLParser):
         return "".join(self.out)
 
 
-def clean_html(s) -> str:
-    """편집기 HTML → 허용 목록만 남긴 안전한 HTML. 2MB 초과는 ValueError."""
+def size_limit(s: str) -> int:
+    """이 본문의 크기 상한(바이트): 사진(img data:image)이 있으면 8MB, 없으면 2MB."""
+    return MAX_SIZE_IMG if _HAS_IMG.search(s) else MAX_SIZE
+
+
+def check_size(s: str) -> None:
+    """상한을 넘으면 ValueError(사용자에게 그대로 보이는 한국어 안내)."""
+    n = len(s.encode("utf-8", "surrogatepass"))
+    if n <= MAX_SIZE:
+        return
+    if size_limit(s) == MAX_SIZE_IMG:
+        if n > MAX_SIZE_IMG:
+            raise ValueError("본문이 너무 큽니다(사진 포함 최대 8MB). 사진 수나 크기를 줄여 주세요.")
+        return
+    raise ValueError("본문이 너무 큽니다(사진 없이 최대 2MB). 내용을 여러 문서로 나누어 주세요.")
+
+
+def clean_html(s, limit=True) -> str:
+    """편집기 HTML → 허용 목록만 남긴 안전한 HTML. 크기 상한 초과는 ValueError.
+    입력은 check_size(거친 문턱), 결과는 정확히: 사진(남은 img src) 뺀 본문 글 2MB·전체 8MB.
+    limit=False 는 거절된 입력을 사용자에게 다시 보여 줄 때만(저장 금지)."""
     s = "" if s is None else str(s)
-    if len(s.encode("utf-8", "surrogatepass")) > MAX_SIZE:
-        raise ValueError("본문 HTML 이 너무 큽니다(최대 2MB)")
+    if limit:
+        check_size(s)
     s = s.replace("\x00", "")
     p = _Cleaner()
     p.feed(s)
     p.close()
-    return p.result()
+    out = p.result()
+    if limit:
+        n = len(out.encode("utf-8", "surrogatepass"))
+        if n - p.img_bytes > MAX_SIZE:
+            raise ValueError("본문 글이 너무 큽니다(사진 말고 최대 2MB). 내용을 여러 문서로 나누어 주세요.")
+        if n > MAX_SIZE_IMG:
+            raise ValueError("본문이 너무 큽니다(사진 포함 최대 8MB). 사진 수나 크기를 줄여 주세요.")
+    return out

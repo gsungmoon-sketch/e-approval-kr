@@ -6,7 +6,9 @@
 
 Pure standard library: the archive holds only the gyeoljae package (no compiled code), so it
 runs unchanged on Windows, macOS and Linux; Python
-imports it straight from the zip (nothing is extracted).
+imports it straight from the zip. The editor and static files are served from the zip
+(importlib.resources); only the vendored HWPX/DOCX converter (it opens its own data files by path)
+is copied once, hash-checked against VENDOR.md, to <data dir>/cache/hanword-<hash>/.
 """
 import argparse
 import re

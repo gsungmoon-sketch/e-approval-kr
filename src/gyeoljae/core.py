@@ -89,6 +89,8 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
         _try_chmod(self.dir, 0o700)
         self.docs_dir = self.dir / "docs"
         self.docs_dir.mkdir(exist_ok=True)
+        from . import hanword
+        hanword.set_cache_dir(self.dir / "cache")  # .pyz 일 때만 씀(반입 변환기 캐시)
         self.db_path = self.dir / "gyeoljae.db"
         self.audit_path = self.dir / "audit.log"
         c = self._connect()

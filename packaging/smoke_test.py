@@ -10,7 +10,8 @@
 It REALLY installs a system service (needs admin/sudo) - meant for throw-away CI runners.
 Steps: install silently -> GET /healthz == 200 -> service runs as the unprivileged account ->
 `setup --admin-id ... --password-file -` (non-interactive, as the service user) -> POST /login
-gives 303 + session cookie -> GET / with the cookie is 200 -> uninstall silently -> service and
+gives 303 + session cookie -> GET / with the cookie is 200 -> editor page, a font and the host
+script are served, traversal is 404 -> uninstall silently -> service and
 program gone, data directory kept.
 """
 import argparse
@@ -100,6 +101,22 @@ def check_login(port, user, password):
     st, _, body = request(port, "GET", "/", headers={"Cookie": cookie.split(";", 1)[0]})
     assert st == 200, f"GET / with session -> {st}"
     log(f"login OK (303 + cookie, home 200, {len(body)} bytes)")
+    check_editor(port, cookie.split(";", 1)[0])
+
+
+def check_editor(port, cookie):
+    """Packaged data files are served (also from inside a .pyz): editor page, one font, host script;
+    a path-traversal attempt is 404."""
+    for path, ctype, min_size in (("/editor/embed.html", "text/html", 1000),
+                                  ("/editor/font/D2Coding-400.woff2", "font/woff2", 100000),
+                                  ("/static/editor-host.js", "text/javascript", 500)):
+        st, h, body = request(port, "GET", path, headers={"Cookie": cookie}, timeout=30)
+        assert st == 200 and h.get("content-type", "").startswith(ctype) and len(body) >= min_size, \
+            f"GET {path} -> {st} {h.get('content-type')} {len(body)} bytes"
+    for path in ("/editor/../web.py", "/editor/hanword_embed.py"):
+        st, _, _ = request(port, "GET", path, headers={"Cookie": cookie})
+        assert st == 404, f"GET {path} -> {st}, expected 404"
+    log("editor files OK (embed.html, font, editor-host.js; traversal 404)")
 
 
 # ---------------------------------------------------------------- per-OS install/uninstall

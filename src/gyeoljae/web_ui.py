@@ -279,6 +279,9 @@ def draft_form(h, app, user, action, m=None, err=""):
 
 
 # ------------------------------------------------------------------ 양식(서식)
+REDISPLAY_MAX = 16 * 1024 * 1024  # 크기 초과로 거절된 편집기 내용을 다시 보여 줄 상한(글자 수)
+
+
 def editor_host(h, fd, m):
     """문서 편집기(iframe) 자리. 스크립트가 돌면 editor-host.js 가 위 입력칸(.edfb)을 숨기고 편집기를 띄운다.
     스크립트가 없으면(휴대폰·시험) 입력칸이 그대로 동작. docinit 은 name 이 없어 그냥은 제출되지 않음."""
@@ -293,6 +296,13 @@ def editor_host(h, fd, m):
             initial_html(fd, m.get("fields"), m.get("body") if m.get("id") else None)
     except ValueError:
         init = ""
+        # 크기로 거절된 제출: 내용을 잃지 않게 같은 정화로 다시 보여 줌(저장은 안 됨, 화면 상한 REDISPLAY_MAX 안에서만)
+        raw = m.get("doc_html")
+        if raw is not None and len(str(raw)) <= REDISPLAY_MAX:
+            try:
+                init = hanword.canonical_html(raw, limit=False)
+            except ValueError:
+                init = ""
     try:  # 저장된 용지(편집기가 돌려준 값) → 없으면 공문서 A4(위30·왼20·오15·아래15)
         page = hanword.parse_page(m.get("doc_page")) or hanword.GOV
     except ValueError:
@@ -301,7 +311,7 @@ def editor_host(h, fd, m):
             f"<p id=ederr class='banner warn' role=alert hidden></p>"
             f"<iframe id=edframe title='문서 편집기'></iframe></div>"
             f"<textarea id=docinit hidden aria-hidden=true>{esc(init)}</textarea>"
-            f"<script src='/static/editor-host.js?v=3' defer></script>")
+            f"<script src='/static/img-shrink.js?v=2' defer></script><script src='/static/editor-host.js?v=5' defer></script>")
 
 
 def form_chooser(h, app, user):
