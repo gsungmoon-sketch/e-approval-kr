@@ -90,6 +90,7 @@
   var SIZES = [8,9,10,11,12,14,16,18,20,24,28,36,48];
   function curPt() { var b = curRun(), px = parseFloat(getComputedStyle(b).fontSize) || 14.67; return Math.round(px / 1.3333); }   // run 기준(연속 크게/작게, HEAD 복원)
   function setPt(pt) { wrapStyle({ fontSize: pt + "pt" }); $("sizeSel").value = String(pt); markDirty(); }
+  WP.setFontPt = setPt;   // 도구 모음 글자 크기 입력칸(wp-toolbar.js)
   function stepFont(d) {
     var cur = curPt(), idx = 0, best = 1e9;
     SIZES.forEach(function (s, i) { if (Math.abs(s - cur) < best) { best = Math.abs(s - cur); idx = i; } });
@@ -149,7 +150,10 @@
     var pt = Math.round((parseFloat(cs.fontSize) || 14.67) / 1.3333), ssel = $("sizeSel"), si = -1;
     for (var j = 0; j < ssel.options.length; j++) if (parseInt(ssel.options[j].value, 10) === pt) { si = j; break; }
     ssel.selectedIndex = si;   // 목록에 없는 크기는 빈 표시
+    for (var h = 0; h < syncHooks.length; h++) { try { syncHooks[h](blk, cs, pt); } catch (e) {} }   // 도구 모음(한글97식) 추가 칸 동기화
   }
+  var syncHooks = [];
+  WP.onSync = function (f) { syncHooks.push(f); };
   var syncQueued = false;
   document.addEventListener("selectionchange", function () {
     if (!syncQueued) { syncQueued = true; requestAnimationFrame(syncToolbar); }
@@ -176,6 +180,7 @@
   var PALETTE_COLORS = ["#000000", "#404040", "#808080", "#a6a6a6", "#d9d9d9", "#ffffff",
     "#c00000", "#e36c09", "#ffc000", "#00b050", "#00b0b0", "#0070c0", "#7030a0", "#e84c9a",
     "#ff0000", "#ff9900", "#ffd966", "#92d050", "#00b0f0", "#8000ff", "#ff00ff", "#7f6000"];
+  WP.PALETTE = PALETTE_COLORS.slice();
   function rgbToHex(c) {
     if (!c) return null; if (c.charAt(0) === "#") return c;
     var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c); if (!m) return null;
@@ -531,14 +536,16 @@
   document.addEventListener("pointerup", function () { if (paintStyle) setTimeout(applyPaint, 0); });
 
   // ── 줄 간격 ±0.2 (Alt+Shift+A 넓게 / Alt+Shift+Z 좁게) ──
-  function lineStep(d) {
+  function lineStep(d) { applyLine(function (lh) { return lh + d; }); }
+  function applyLine(f) {   // 줄 간격 공용(±단계 핫키·도구 모음 줄 간격 칸): 1.0~3.0 배
     selBlocks().forEach(function (b) {
       var cs = getComputedStyle(b), lh = parseFloat(cs.lineHeight) / parseFloat(cs.fontSize);
       if (!isFinite(lh)) lh = 1.6;
-      b.style.lineHeight = Math.max(1, Math.min(3, lh + d)).toFixed(2);
+      b.style.lineHeight = Math.max(1, Math.min(3, f(lh))).toFixed(2);
     });
     markDirty();
   }
+  WP.setLinePct = function (pct) { applyLine(function () { return pct / 100; }); };   // 줄 간격 칸(%)
 
   function setIndentPx(px) { selBlocks().forEach(function (b) { b.style.marginLeft = Math.max(0, Math.round(px)) + "px"; }); markDirty(); }
   function curIndentPx() { var b = curBlock(); return b ? (parseFloat(getComputedStyle(b).marginLeft) || 0) : 0; }
@@ -573,6 +580,7 @@
   }
   page.addEventListener("pointerdown", function () { blockState = 0; });   // 클릭하면 블록 상태 리셋
   function setColor(c) { document.execCommand("styleWithCSS", false, true); try { exec("foreColor", c); } finally { document.execCommand("styleWithCSS", false, false); } }
+  WP.setColor = setColor;   // 도구 모음 글자 색(wp-toolbar.js)
 
   // ── 하이퍼링크(#20) ──
   var _lkEdit = null;   // 편집 대상 <a>(신규 삽입이면 null)

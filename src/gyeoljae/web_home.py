@@ -281,7 +281,9 @@ def files_page(h, app, user, p):
         act_html += (f"<form method=post action='/files/{fid}/delete' class=card>{c}<input type=hidden name=scope "
                      f"value='{esc(r['scope'])}'><button class=warn>삭제(숨김)</button> <span class=mut>이전 판과 기록은 "
                      f"보존됩니다</span></form>")
-    body = (f"<h2>{esc(r['name'])}</h2><p><a href='/files/{fid}/get' class=btn>최신판 내려받기</a> "
+    from .web_oo import oo_buttons
+    body = (f"<h2>{esc(r['name'])}</h2><p><a href='/files/{fid}/get' class=btn>최신판 내려받기</a>"
+            f"{oo_buttons(app, user, 'l', fid, name=r['name'])} "
             f"<span class=mut>{'전사' if r['scope'] == 'org' else esc(r['dept']) + ' 부서'} 자료실</span></p>"
             f"<div class=card><h3>판 이력</h3><table>{vs}</table></div>{act_html}")
     return h.ok(r["name"], body)

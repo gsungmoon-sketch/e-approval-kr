@@ -183,6 +183,12 @@
     },
   });   // 자동 목차(연속 갱신)는 폐지(2026-07-19). tocGen=쪽 메뉴 1회 생성(편집가능 텍스트)로 대체(2026-07-20).
   WP.pageGuides = paginate;
+  WP.pageCount = function () {   // 문서 통계용 쪽 수 — 쪽 경계 표시(N쪽 라벨)와 같은 셈(쪽 경계 켜짐=스페이서 반영, 꺼짐=근사)
+    var cs = getComputedStyle(page), padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0,
+        padT = parseFloat(cs.paddingTop) || 0, padB = parseFloat(cs.paddingBottom) || 0;
+    var pageH = (page.clientWidth - padL - padR) * ratio(); if (!(pageH >= 60)) return 1;
+    return Math.max(1, Math.ceil((page.scrollHeight - padT - padB - 6) / pageH));
+  };
   document.body.classList.add("pageguides");
   setTimeout(paginate, 350);
 }());

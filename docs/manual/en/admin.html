@@ -125,6 +125,16 @@ e-approval-kr -u admin2 change approve &lt;id&gt; --password-file pw.txt   # for
 e-approval-kr -u admin smtp test someone@example.com   # sends one test mail
 e-approval-kr -u admin mail flush      # send the queue now (the web server also sends every 30 seconds)</code></pre>
 With <code>--allow-external-mail on</code> internal mail may also be sent to outside addresses (hourly limits: <code>--rate-per-hour</code>, <code>--user-external-per-hour</code>).</div>
+<h2 id="onlyoffice">9-1. OnlyOffice document editing (optional)</h2>
+<p>It is <b>off</b> by default. When you connect a separately run OnlyOffice Document Server, docx, xlsx and pptx attachments and library files can be <b>viewed and edited</b> in the browser (no office software needed on the PC). Edits are saved as a new version when the editor is closed or saved (Ctrl+S), and the audit log names the editing user.</p>
+<ol><li>Run the document server with JWT on (<code>JWT_ENABLED=true</code>, <code>JWT_SECRET</code>).</li>
+<li>In <b>Admin → OnlyOffice</b> enter the document server address (as the browser opens it), the approval server's internal address (how the document server reaches it), the document server's internal address if different, and the JWT secret (same value as the document server, 32+ characters), then switch it on.</li></ol>
+<ul><li>Only people who could upload a new version can edit: attachments only by the drafter while the document is a draft, withdrawn or rejected; library files by people with write access, latest version only. Attachments of documents in progress or completed, and older versions, are <b>view only</b>.</li>
+<li>The document server gets files only through short signed links from the approval server, and edited results are fetched only from the configured document server address.</li></ul>
+<div class="warn"><b>Warning</b>The JWT secret is stored in <code>onlyoffice.json</code> in the data folder. Keep the document server on the internal network and do not share its JWT secret with other services.</div>
+<div class="adm"><b>For administrators</b><pre><code>cat secret-file | e-approval-kr -u admin onlyoffice set --docs-url https://docs.example.com \
+   --app-internal-url http://gyeoljae.internal:8130 --jwt-secret-stdin --enabled on
+e-approval-kr -u admin onlyoffice show</code></pre></div>
 <h2 id="audit">10. Audit log and verification</h2>
 <p>Under <b>Admin → Audit log (감사로그)</b> every state change (submit, approve, reject, permission changes, ...) is recorded in a hash chain. Completed documents also get a content hash, so secret edits show up in verification.</p>
 <ul><li>Run verification regularly (for example monthly).</li>

@@ -424,8 +424,9 @@
   fileH.addEventListener("pointerdown", function (e) { e.preventDefault(); e.stopPropagation(); });
   fileH.addEventListener("pointerup", function (e) { e.preventDefault(); e.stopPropagation(); if (sel) showFileCtx(sel); });
   mover.addEventListener("pointerdown", function (e) { if (!sel) return; e.preventDefault(); e.stopPropagation(); forEachSel(function (el) { ensureFixedOf(el); }); startMove(e); try { mover.setPointerCapture(e.pointerId); } catch (x) {} });
-  mover.addEventListener("pointermove", function (e) { if (!move) return; e.preventDefault(); dragMove(e); });
-  mover.addEventListener("pointerup", function (e) { if (move) { move = null; markDirty(); WP.histRecord && WP.histRecord(); } try { mover.releasePointerCapture(e.pointerId); } catch (x) {} });
+  mover.addEventListener("pointermove", function (e) { if (!move) return; e.preventDefault(); objQ.push(e); });   // window 경로와 같은 큐(이중 적용·자동스크롤 2배 방지)
+  mover.addEventListener("pointerup", function (e) { endObjDrag(); try { mover.releasePointerCapture(e.pointerId); } catch (x) {} });
+  mover.addEventListener("lostpointercapture", endObjDrag);
   if (objtools) {
     objtools.addEventListener("pointerdown", function (e) { if (e.target.closest("[data-obj],[data-shape]")) e.preventDefault(); });
     objtools.addEventListener("pointerup", function (e) {
@@ -511,7 +512,12 @@
       if (!isMedia) startMove(e);                        // fixed 개체들 함께 이동 준비(미디어는 컨트롤 우선)
     } else if (e.target !== handle && e.target !== mover && !(objtools && objtools.contains(e.target))) deselect();
   }, true);
+  // #9 잔여(2026-11-15): 리사이즈·이동·선 끝점 드래그 = rAF 합치기(프레임당 1회·마지막 이벤트), 놓을 때 flush, pointercancel=놓기와 동일
+  var objQ = WP.rafDrag(objDragApply);
   window.addEventListener("pointermove", function (e) {
+    if ((lineDrag && sel && isLine(sel)) || (drag && sel) || move) { e.preventDefault(); objQ.push(e); }
+  });
+  function objDragApply(e) {
     if (lineDrag && sel && isLine(sel)) {   // 끝점 자유 이동 + 수평/수직/45° 스냅(Alt=해제)
       var p = toPage(e.clientX, e.clientY), other = lineDrag.which === 1 ? 2 : 1;
       var ox = +sel.getAttribute("data-x" + other), oy = +sel.getAttribute("data-y" + other), nx = p.x, ny = p.y;
@@ -523,18 +529,23 @@
       }
       nx = Math.max(0, Math.round(nx)); ny = Math.max(0, Math.round(ny));
       sel.setAttribute("data-x" + lineDrag.which, nx); sel.setAttribute("data-y" + lineDrag.which, ny);
-      renderLine(sel); place(); e.preventDefault(); return;
+      renderLine(sel); place(); return;
     }
     if (drag && sel) {
       var w = drag.w0, h = drag.h0;
       if (drag.mode !== "h") w = drag.w0 + (e.clientX - drag.x0);   // 가로: 모서리·우변
       if (drag.mode !== "w") h = drag.h0 + (e.clientY - drag.y0);   // 세로: 모서리·하변
       if (drag.mode === "corner" && e.shiftKey && drag.w0 && drag.h0) { var s = Math.max(w / drag.w0, h / drag.h0); w = drag.w0 * s; h = drag.h0 * s; }   // Shift=비율고정
-      setWH(w, h); e.preventDefault(); return;
+      setWH(w, h); return;
     }
-    if (move) { dragMove(e); e.preventDefault(); }
-  });
-  window.addEventListener("pointerup", function () { if (drag || move || lineDrag) { drag = null; move = null; lineDrag = null; markDirty(); WP.histRecord && WP.histRecord(); } });   // 드롭 시점 1회만 히스토리 기록(중간 프레임 미기록)
+    if (move) dragMove(e);
+  }
+  function endObjDrag() {   // 드롭 시점 1회만 히스토리 기록(중간 프레임 미기록). 대기 중인 마지막 이동은 먼저 반영
+    if (drag || move || lineDrag) { objQ.flush(); drag = null; move = null; lineDrag = null; markDirty(); WP.histRecord && WP.histRecord(); }
+    else objQ.cancel();
+  }
+  window.addEventListener("pointerup", endObjDrag);
+  window.addEventListener("pointercancel", endObjDrag);   // 드롭 시점 1회만 히스토리 기록(중간 프레임 미기록)
   // ── 범위(고무줄) 개체선택(2026-07-19): Ctrl+드래그(게임패드 D패드↓=Ctrl) 또는 ＋선택 모드 드래그.
   //    점선 상자와 겹치는 개체 일괄 선택 → 기존 다중선택(selSet) 합류(묶기/풀기/✕/이동/맞춤 공용).
   var ctrlHeld = false;   // ⚠️이 기기 WPE=포인터 이벤트에 ctrlKey 미탑재 가능 → 키 이벤트로 직접 추적(D패드↓=Ctrl 홀드 포함)
@@ -549,7 +560,10 @@
     marq = { x: e.clientX, y: e.clientY, on: false };
     e.preventDefault(); e.stopPropagation();           // 텍스트 드래그선택 차단
   }, true);
-  window.addEventListener("pointermove", function (e) {
+  var marqQ = WP.rafDrag(marqApply);   // #9 잔여: 점선 상자 갱신도 프레임당 1회
+  window.addEventListener("pointermove", function (e) { if (marq) { e.preventDefault(); marqQ.push(e); } }, true);
+  window.addEventListener("pointercancel", function () { marqQ.cancel(); if (marq) { marq = null; if (marqEl) marqEl.classList.add("hidden"); } }, true);   // 중단=선택 없이 상자만 닫음
+  function marqApply(e) {
     if (!marq) return;
     var r = _mRect(marq, e.clientX, e.clientY);
     if (!marq.on && (r.r - r.l) + (r.b - r.t) < 6) return;   // 6px 미만=클릭
@@ -558,10 +572,10 @@
     marqEl.style.left = r.l + "px"; marqEl.style.top = r.t + "px";
     marqEl.style.width = (r.r - r.l) + "px"; marqEl.style.height = (r.b - r.t) + "px";
     marqEl.classList.remove("hidden");
-    e.preventDefault();
-  }, true);
+  }
   window.addEventListener("pointerup", function (e) {
     if (!marq) return;
+    marqQ.flush();
     var was = marq; marq = null;
     if (marqEl) marqEl.classList.add("hidden");
     if (!was.on) return;
@@ -588,7 +602,9 @@
   //   종전 방식은 캐럿이 개체에 고착돼 "더 못 지움" 버그를 냈다. 삭제 대상에 개체가 없으면 손 안 댄다.
   var OSEL = ".wp-obj,.objline,table,img,video,audio";
   function topObjsIn(range) {   // range와 교차하는 최상위 개체(래퍼 안 맨몸 img·미디어 중복 제거)
+    var ca = range.commonAncestorContainer, caEl = ca && (ca.nodeType === 1 ? ca : ca.parentNode), caCell = caEl && caEl.closest ? caEl.closest("td,th") : null;   // (2026-11-15) 삭제 범위를 통째로 품은 개체(=표 칸 안 글자 삭제)는 벽이 아님 — 종전엔 칸 안 Backspace가 표 앞으로 튀었음
     return [].slice.call(page.querySelectorAll(OSEL)).filter(function (el) {
+      if (caCell && el.contains(caCell)) return false;   // 한 칸 안 삭제만 예외(칸을 넘는 범위는 종전대로 벽)
       if (el.tagName === "IMG" && el.closest(".wp-obj,.objline")) return false;
       if ((el.tagName === "VIDEO" || el.tagName === "AUDIO") && el.closest(".wp-obj,.objline")) return false;
       try { return range.intersectsNode(el); } catch (x) { return false; }

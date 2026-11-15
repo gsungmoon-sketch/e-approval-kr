@@ -6,20 +6,58 @@
   var _matches = [], _mi = -1, _findKey = "";
 
   function buildRegex(global) {
-    var q = $("f-q").value; if (!q) return null;
+    var q = $("f-q").value; if (!q) { $("f-count").classList.remove("bad"); return null; }
     var flags = (global ? "g" : "") + ($("f-case").checked ? "" : "i");
     var pat = $("f-regex").checked ? q : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     // 낱말 단위는 \b 대신 collectMatches의 유니코드 경계 필터로 처리(\b는 한글에서 오동작)
-    try { return new RegExp(pat, flags); } catch (e) { toastMsg("정규식 오류: " + e.message); return null; }
+    try { var re = new RegExp(pat, flags); $("f-count").classList.remove("bad"); return re; }
+    catch (e) { toastMsg("정규식 오류: " + e.message); var c = $("f-count"); if (c) { c.textContent = "정규식 오류"; c.classList.add("bad"); } return null; }
+  }
+  // 정규식 바꾸기(2026-11-15): 일치 부분만 떼어 다시 맞추면 $1·뒤보기(?<=)·^ 등 문맥이 깨짐 →
+  //   원래 글자 마디 전체에 같은 식(y=그 자리 고정)을 적용해 바꿀 문자열을 얻는다.
+  //   (String.replace+sticky는 WebKit이 lastIndex를 무시 → exec로 그 자리 일치를 얻고 $ 치환 규칙은 직접 전개)
+  function expandRep(tpl, m, s) {
+    return tpl.replace(/\$(\$|&|`|'|<([^>]*)>|\d{1,2})/g, function (all, t, name) {
+      if (t === "$") return "$";
+      if (t === "&") return m[0];
+      if (t === "`") return s.slice(0, m.index);
+      if (t === "'") return s.slice(m.index + m[0].length);
+      if (name !== undefined) return m.groups ? (m.groups[name] == null ? "" : m.groups[name]) : all;
+      var n = parseInt(t, 10);
+      if (n >= 1 && n < m.length) return m[n] == null ? "" : m[n];
+      if (t.length === 2) { var n1 = parseInt(t.charAt(0), 10); if (n1 >= 1 && n1 < m.length) return (m[n1] == null ? "" : m[n1]) + t.charAt(1); }
+      return all;
+    });
+  }
+  function releaseFormula(node) {   // 계산식 칸 글자를 바꿨으면 계산식 해제(직접 입력과 동일 규칙 — 다시 계산이 되돌리지 않게)
+    var c = node.parentNode && node.parentNode.closest && node.parentNode.closest("td[data-formula],th[data-formula]");
+    if (c) c.removeAttribute("data-formula");
+  }
+  function replFor(s, mm, re) {
+    var rep = $("f-r").value;
+    if (!re) return rep;
+    var g = new RegExp(re.source, re.flags.replace("g", "") + "g"); g.lastIndex = mm.start;
+    var m = g.exec(s);
+    return (m && m.index === mm.start) ? expandRep(rep, m, s) : rep;
   }
   var WORDCH = /[0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ_]/;   // 낱말 문자(한글 음절·자모 포함)
   function wholeWord(s, start, end) {
     var a = s.charAt(start - 1), b = s.charAt(end);
     return !(a && WORDCH.test(a)) && !(b && WORDCH.test(b));
   }
+  // 편집 불가 파생 글자 판정 — 가장 가까운 contenteditable 조상 기준(#page 자체가 false인 읽기 전용·미리보기는 본문으로 취급)
+  function derived(el) {
+    if (!el || !el.closest) return true;
+    if (el.closest("#wpmeta,[data-pgfill]")) return true;
+    var ce = el.closest("[contenteditable]");
+    return !!(ce && ce !== page && ce.getAttribute("contenteditable") === "false");
+  }
   function textNodes() {
     var walk = document.createTreeWalker(page, NodeFilter.SHOW_TEXT, null), out = [], n;
-    while ((n = walk.nextNode())) { if (!(n.parentNode && n.parentNode.id === "wpmeta")) out.push(n); }
+    while ((n = walk.nextNode())) {   // 문서 메타·편집 불가 파생 글자(미주 번호·주석 제목·개체 내부)는 찾기·바꾸기 대상 아님
+      var pe = n.parentNode; if (!pe || derived(pe)) continue;
+      out.push(n);
+    }
     return out;
   }
   function collectMatches() {
@@ -45,7 +83,7 @@
     var key = $("f-q").value + "|" + $("f-case").checked + $("f-word").checked + $("f-regex").checked + "|" + _gen;
     if (key !== _findKey) { _findKey = key; _mi = -1; collectMatches(); }
   }
-  function updateFindCount() { var c = $("f-count"); if (c) c.textContent = _matches.length ? ((_mi + 1) + " / " + _matches.length) : ($("f-q").value ? "일치 없음" : ""); }
+  function updateFindCount() { var c = $("f-count"); if (c && c.classList.contains("bad")) return; if (c) c.textContent = _matches.length ? ((_mi + 1) + " / " + _matches.length) : ($("f-q").value ? "일치 없음" : ""); }
   function flashMatch(r) {   // 모달이 포커스를 가져 selection이 흐릿할 때도 찾은 위치가 보이게 잠깐 강조
     try {
       var rect = r.getBoundingClientRect(); if (!rect || (!rect.width && !rect.height)) return;
@@ -79,32 +117,68 @@
   function replaceOne() {
     ensureMatches();
     if (_mi < 0 || _mi >= _matches.length) { findNext(); return; }
-    var prev = _mi, mm = _matches[_mi], s = mm.node.nodeValue, matched = s.slice(mm.start, mm.end), rep = $("f-r").value;
-    if ($("f-regex").checked) { var one = buildRegex(false); if (one) rep = matched.replace(one, $("f-r").value); }
+    var prev = _mi, mm = _matches[_mi], s = mm.node.nodeValue;
+    var rep = replFor(s, mm, $("f-regex").checked ? buildRegex(false) : null);
     mm.node.nodeValue = s.slice(0, mm.start) + rep + s.slice(mm.end);
+    releaseFormula(mm.node);
+    if (WP.recalcFormulas) WP.recalcFormulas();   // 표 숫자를 바꿨으면 계산식 칸도 맞춤
     markDirty(); _findKey = ""; ensureMatches(); if (_matches.length) selectMatch(prev);   // 바꾼 자리=다음 일치로 진행(마지막이면 wrap)
   }
   function replaceAll() {   // _matches 기반 치환 — 낱말 단위 필터도 일관 적용, 뒤에서부터(오프셋 보존)
     ensureMatches();
     if (!_matches.length) { toastMsg("일치 없음"); updateFindCount(); return; }
-    var rep = $("f-r").value, one = $("f-regex").checked ? buildRegex(false) : null, n = 0;
-    for (var i = _matches.length - 1; i >= 0; i--) {
-      var mm = _matches[i], s = mm.node.nodeValue, matched = s.slice(mm.start, mm.end);
-      var r = one ? matched.replace(one, rep) : rep;
-      mm.node.nodeValue = s.slice(0, mm.start) + r + s.slice(mm.end);
+    var one = $("f-regex").checked ? buildRegex(false) : null, n = 0;
+    var reps = _matches.map(function (mm) { return replFor(mm.node.nodeValue, mm, one); });   // 바꿀 문자열은 모두 원문 기준으로 먼저(문맥 고정)
+    for (var i = _matches.length - 1; i >= 0; i--) {   // 같은 마디 안 뒤쪽부터 → 앞 일치의 위치 보존
+      var mm = _matches[i], s = mm.node.nodeValue;
+      mm.node.nodeValue = s.slice(0, mm.start) + reps[i] + s.slice(mm.end);
+      releaseFormula(mm.node);
       n++;
     }
-    toastMsg(n + "곳 바꿈"); markDirty(); _findKey = ""; collectMatches();
+    if (WP.recalcFormulas) WP.recalcFormulas();
+    toastMsg(n + "곳 바꿈"); WP.status && WP.status(n + "곳 바꿈"); markDirty(); _findKey = ""; collectMatches();
   }
 
+  // 문서 통계(2026-11-15): 문단 단위(가장 안쪽 p·제목·목록 항목, 문단 없는 표 칸)로 셈. 편집 불가 파생 글자(미주 번호 등)·
+  //   문서 메타·쪽 채움·제로폭 자리표시는 제외. 200자 원고지 = 문단마다 첫 칸 비우고 한 줄 20칸, 10줄=1매(문단 끝 남은 칸은 버림).
+  var UNIT = "p,h1,h2,h3,h4,h5,h6,li,td,th,pre,blockquote,dt,dd";
+  function unitText(el) {
+    var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), n, t = "";
+    while ((n = w.nextNode())) {
+      if (derived(n.parentNode)) continue;
+      t += n.nodeValue;
+    }
+    return t.replace(/\uFEFF/g, "").replace(/[\r\n]+/g, " ");
+  }
+  function docStats() {
+    var units = Array.prototype.filter.call(page.querySelectorAll(UNIT), function (el) {
+      if (derived(el)) return false;
+      return !el.querySelector(UNIT);   // 가장 안쪽만(문단 품은 칸·목록은 제외 → 이중 계산 없음)
+    });
+    var st = { ch: 0, chNoSp: 0, words: 0, paras: 0, lines: 0 };
+    units.forEach(function (el) {
+      var t = unitText(el); if (!t.replace(/\s/g, "")) return;   // 빈 문단은 세지 않음
+      st.paras++; st.ch += t.length; st.chNoSp += t.replace(/\s/g, "").length;
+      st.words += (t.trim().match(/\S+/g) || []).length;
+      st.lines += Math.ceil((t.trim().length + 1) / 20);
+    });
+    st.sheets = Math.ceil(st.lines / 10);
+    st.pages = WP.pageCount ? WP.pageCount() : 1;
+    st.tables = page.querySelectorAll("table").length; st.images = page.querySelectorAll("img").length;
+    return st;
+  }
+  WP.docStats = docStats;
   function wordCount() {
-    var txt = page.innerText.replace(/\uFEFF/g, ""), nospace = txt.replace(/\s/g, ""), words = (txt.trim().match(/\S+/g) || []).length;   // 대기 서식 span의 제로폭 자리표시는 글자수서 제외
-    $("st-ch").textContent = txt.replace(/\n/g, "").length + "자";
-    $("st-chnos").textContent = nospace.length + "자";
-    $("st-words").textContent = words + "개";
-    $("st-paras").textContent = page.querySelectorAll("p,h1,h2,h3,li").length + "개";
-    $("st-obj").textContent = page.querySelectorAll("table").length + "표 / " + page.querySelectorAll("img").length + "그림";
+    var st = docStats(), f = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ","); };
+    $("st-ch").textContent = f(st.ch) + "자";
+    $("st-chnos").textContent = f(st.chNoSp) + "자";
+    $("st-words").textContent = f(st.words) + "개";
+    $("st-paras").textContent = f(st.paras) + "개";
+    $("st-pages").textContent = f(st.pages) + "쪽";
+    $("st-sheets").textContent = f(st.sheets) + "매";
+    $("st-obj").textContent = st.tables + "표 / " + st.images + "그림";
     openModal("m-stats");
+    WP.status && WP.status("문서 통계: " + f(st.ch) + "자 · " + f(st.pages) + "쪽");
   }
 
   // 자주 틀리는 맞춤법(고신뢰 규칙)

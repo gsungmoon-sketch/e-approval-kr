@@ -96,6 +96,41 @@ class SanitizeTest(unittest.TestCase):
         out = clean_html("<td colspan=99999 rowspan=2 class='a\"b' data-row='1' id=x name=y>t</td>")
         self.assertEqual(out, '<td rowspan="2" data-row="1">t</td>')
 
+    def test_formula_rules(self):  # hanword 0.1.10 표 계산식: td/th·고정 문법만, 첫 속성만, 편집기 계산 비용 상한
+        from gyeoljae.sanitize import FORMULA_MAX, FORMULA_WORK
+        self.assertIn('<td data-formula="SUM(A1:B3)">', clean_html('<table><tr><td data-formula="SUM(A1:B3)">1</td></tr></table>'))
+        self.assertNotIn("data-formula", clean_html('<table><tr><td data-formula="bad" data-formula="SUM(LEFT)">1</td></tr></table>'))
+        self.assertNotIn("data-formula", clean_html('<p data-formula="SUM(LEFT)">1</p>'))
+        row = '<tr><td data-formula="SUM(ABOVE)">1</td></tr>'
+        self.assertEqual(clean_html("<table>" + row * FORMULA_MAX + "</table>").count("data-formula"), FORMULA_MAX)
+        out = clean_html("<table>" + row * (FORMULA_MAX + 1) + "</table>")
+        self.assertNotIn("data-formula", out)
+        self.assertEqual(out.count("<td>1</td>"), FORMULA_MAX + 1)  # 값은 그대로
+        big = "<table>" + row * 10 + "<tr><td>2</td></tr>" * (FORMULA_WORK // 10) + "</table>"
+        self.assertNotIn("data-formula", clean_html(big, limit=False))
+        # 상한은 표마다(hanword 0.1.11 예산과 같게): 여러 표에 나뉜 계산식은 그대로, 큰 표 옆의 작은 표는 곱에 안 섞임
+        two = ("<table>" + row * 200 + "</table>") * 2
+        self.assertEqual(clean_html(two).count("data-formula"), 400)
+        side = "<table>" + "<tr><td>2</td></tr>" * 20000 + "</table><table>" + row * 200 + "</table>"
+        self.assertEqual(clean_html(side, limit=False).count("data-formula"), 200)
+        nest = "<table><tr><td><table>" + row * 200 + "</table></td></tr>" + row * 200 + "</table>"
+        self.assertEqual(clean_html(nest).count("data-formula"), 400)  # 중첩 표 칸은 안쪽 표에
+        self.assertNotIn("data-formula", clean_html(nest.replace("</table></td>", row * 101 + "</table></td>")))
+        # 문서 전체 뒷받침: 서버는 표 안 <table> 을 중첩으로 보지만 브라우저는 앞 표를 닫음(감사 사례) → 전체 칸 수로 막음
+        from gyeoljae.sanitize import FORMULA_TOTAL
+        f = '<td data-formula="SUM(ABOVE)">1</td>'
+        trick = "<table><tr><td>" + ("<table><table></table>" + f * 299 + '<td data-formula="SUM(ABOVE)">1') * 20
+        self.assertNotIn("data-formula", clean_html(trick, limit=False))
+        many = ("<table>" + row * 300 + "</table>") * (FORMULA_TOTAL // 300)
+        self.assertEqual(clean_html(many, limit=False).count("data-formula"), FORMULA_TOTAL)
+        self.assertNotIn("data-formula", clean_html(many + "<table>" + row + "</table>", limit=False))
+
+    def test_browser_parity_edges(self):
+        self.assertNotIn("hidden", clean_html("<title/>hidden<p>vis</p></title><p>after</p>"))
+        self.assertIn("after", clean_html("<title/>hidden<p>vis</p></title><p>after</p>"))
+        self.assertNotIn("X", clean_html("<dialog><plaintext></dialog><p>X</p>"))
+        self.assertIn("본문", clean_html('<meta charset="utf-8"><frame><p>본문</p>'))
+
     def test_limits(self):
         with self.assertRaises(ValueError):
             clean_html("a" * (2 * 1024 * 1024 + 1))

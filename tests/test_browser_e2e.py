@@ -279,6 +279,115 @@ class BrowserE2ETest(unittest.TestCase):
         self.assertEqual({b: len(app.list_box("dev1", b)) for b in before}, before, "문서가 생기지 않음")
         self.assertEqual(self.errors, [])
 
+    def test_3_formula_submit_approve(self):  # hanword 0.1.10 표 계산식: 편집기가 계산, 서버는 식·값을 그대로 보관
+        pg = self.login("dev1")
+        fr, frame = self.open_editor(pg, "계산식 E2E")
+        self.type_text(fr, "계산식 표")
+        frame.evaluate("""() => {
+            const p = document.getElementById('page'), d = document.createElement('div');
+            d.className = 'objline'; d.setAttribute('data-place', 'char');
+            d.innerHTML = '<table border="1"><tbody><tr><td>1,200</td></tr><tr><td id="e2e-b">800</td></tr>' +
+                          '<tr><td id="e2e-sum"><br></td></tr></tbody></table>';
+            p.appendChild(d); p.appendChild(document.createElement('p'));
+        }""")
+        fr.locator("#e2e-sum").click()
+        frame.evaluate("() => WP.dispatch('formula')")  # 입력 › 표 계산식… (우클릭 '계산식…' 과 같은 동작)
+        frame.wait_for_function("() => !document.getElementById('m-formula').classList.contains('hidden')")
+        self.assertEqual(frame.evaluate("() => document.getElementById('fm-prev').textContent"), "=SUM(ABOVE)")
+        fr.locator("#m-formula button.ok").click()
+        frame.wait_for_function("() => document.getElementById('e2e-sum').textContent === '2,000'")
+        frame.evaluate("""() => {  // 캐럿을 '800' 끝에(토스트가 칸을 가릴 수 있어 클릭 대신)
+            const t = document.getElementById('e2e-b').firstChild, r = document.createRange(), s = getSelection();
+            document.getElementById('page').focus(); r.setStart(t, t.length); r.collapse(true);
+            s.removeAllRanges(); s.addRange(r);
+        }""")
+        pg.keyboard.type("0")  # 800 → 8000: 표 안 입력이면 다시 계산
+        frame.wait_for_function("() => document.getElementById('e2e-sum').textContent === '9,200'")
+        with pg.expect_navigation(url=re.compile(r"/doc/\d+")):
+            pg.click("button[name=go][value=submit]")
+        did = int(re.search(r"/doc/(\d+)", pg.url).group(1))
+        app = App(str(self.data))
+        html = app.show("dev1", did)["doc_html"]
+        self.assertRegex(html, r'<td data-formula="SUM\(ABOVE\)">9,200</td>')
+        ap = self.login("devlead")
+        ap.goto(f"{self.base}/doc/{did}")
+        ap.click("button[name=act][value=approve]")
+        ap.wait_for_load_state()
+        ap.click(f"form[action='/doc/{did}/approve'] button")
+        ap.wait_for_load_state()
+        m = app.show("dev1", did)
+        self.assertEqual(m["status"], "done", m["status"])
+        self.assertEqual(m["doc_html"], html, "완료 뒤 식·값 그대로")
+        pg.goto(f"{self.base}/doc/{did}")
+        self.assertIn("9,200", pg.locator(".dochtml").first.inner_text())  # 보관 문서에 계산된 값
+        # 같은 보관 본문을 편집기 읽기 전용으로: 다시 계산하지 않고, 찾기·문서 통계는 동작
+        # (결재 화면은 스크립트 없는 서버 HTML — 편집기 iframe 을 허용하는 기안 화면 CSP 위에서 시험)
+        ap.goto(self.base + "/new?form=general")
+        ap.evaluate("""(h) => new Promise((ok) => {
+            const f = document.createElement('iframe'); f.id = 'rof'; f.src = '/editor/embed.html';
+            window.addEventListener('message', (e) => {
+                if (e.source === f.contentWindow && e.data && e.data.type === 'ready') {
+                    f.contentWindow.postMessage({type: 'load', html: h, readOnly: true, page: 'gov', id: 'ro'}, location.origin);
+                    ok();
+                }
+            });
+            document.body.appendChild(f); setTimeout(ok, 20000);
+        })""", m["doc_html"])
+        ro = ap.frame_locator("#rof")
+        rof = ap.locator("#rof").element_handle().content_frame()
+        rof.wait_for_function("() => window.WP && WP.embedReadOnly && WP.embedReadOnly() && "
+                              "document.querySelector('#page td[data-formula]')")
+        self.assertEqual(rof.evaluate("() => document.querySelector('#page td[data-formula]').textContent"), "9,200")
+        st = rof.evaluate("() => WP.docStats()")
+        self.assertGreater(st["ch"], 0)
+        self.assertGreaterEqual(st["tables"], 1)
+        rof.evaluate("() => { WP.dispatch('wordcount'); }")
+        rof.wait_for_function("() => !document.getElementById('m-stats').classList.contains('hidden')")
+        rof.evaluate("() => { WP.closeModal(document.getElementById('m-stats')); WP.dispatch('find'); }")
+        ro.locator("#f-q").fill("9,200")
+        rof.evaluate("() => WP.dispatch('findNext')")
+        rof.wait_for_function("() => /1/.test(document.getElementById('f-count').textContent)")
+        self.assertEqual(rof.evaluate("() => document.querySelector('#page td[data-formula]').textContent"), "9,200")
+        self.assertEqual(self.errors, [])
+
+
+    def test_4_toolbar97_in_embed(self):  # hanword 0.1.11 한글97식 도구 모음: 결재 편집기에서도 뜨고, 새 문서·열기·저장은 없음
+        pg = self.login("dev1")
+        csp = []
+        pg.on("console", lambda m: csp.append(m.text) if "Content Security Policy" in m.text else None)
+        fr, frame = self.open_editor(pg, "도구 모음 E2E")
+        frame.wait_for_function("() => WP.toolbarLayout && WP.toolbarLayout() === '97'")
+        for sel in ("#tbStd", "#tbFmt", "#tbFmt #fontSel", "#tbFmt #sizeBox", "#tbFmt #sizeSel", "#tbFmt [data-act=bold]"):
+            self.assertEqual(fr.locator(sel).count(), 1, sel)
+        self.assertTrue(fr.locator("#tbFmt #fontSel").is_visible())
+        self.assertTrue(fr.locator("#tbFmt #sizeBox").is_visible())
+        self.assertGreater(fr.locator("#tbStd button").count(), 0, "표준 도구 줄에 버튼")
+        gone = ("new", "open", "save", "dlHtml")
+        sel = ", ".join(f'[data-act="{a}"]' for a in gone)
+        self.assertEqual(fr.locator(sel).count(), 0, "임베드: 새 문서·불러오기·저장 버튼 없음")
+        acts = frame.evaluate("""() => WP.menus().flatMap(m => (m.items || []).filter(i => i !== '-').map(i => i[2]))""")
+        self.assertTrue(acts, "메뉴")
+        self.assertFalse(set(acts) & set(gone), "임베드: 메뉴에도 새 문서·불러오기·저장 없음")
+        self.assertNotIn("guide", acts, "임베드: 사용 안내서(guide.html) 없음")
+        # 진하게: 글자를 고르고 서식 줄의 '가' 단추
+        self.type_text(fr, "굵게할글자")
+        frame.evaluate("""() => {
+            const w = document.createTreeWalker(document.getElementById('page'), NodeFilter.SHOW_TEXT);
+            let n; while ((n = w.nextNode()) && n.nodeValue.indexOf('굵게할글자') < 0);
+            const i = n.nodeValue.indexOf('굵게할글자'), r = document.createRange(), s = getSelection();
+            r.setStart(n, i); r.setEnd(n, i + 5); s.removeAllRanges(); s.addRange(r);
+        }""")
+        fr.locator("#tbFmt [data-act=bold]").click()
+        frame.wait_for_function("""() => [...document.querySelectorAll('#page b, #page strong, #page [style*=bold], #page [style*="700"]')]
+            .some(e => e.textContent.indexOf('굵게할글자') >= 0)""")
+        with pg.expect_navigation(url=re.compile(r"/doc/\d+")):
+            pg.click("button[name=go][value=submit]")
+        did = int(re.search(r"/doc/(\d+)", pg.url).group(1))
+        html = App(str(self.data)).show("dev1", did)["doc_html"]
+        self.assertRegex(html, r"<(b|strong)[^>]*>굵게할글자|font-weight: ?(bold|700)[^>]*>[^<]*굵게할글자")
+        self.assertEqual(csp, [], "CSP 위반 없음")
+        self.assertEqual(self.errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

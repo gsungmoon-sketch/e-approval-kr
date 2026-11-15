@@ -11,17 +11,23 @@
     if (e.button === 2) return;                       // 우클릭=메뉴
     down = { x: e.clientX, y: e.clientY }; moved = false; anchor = caretAt(e.clientX, e.clientY);
   });
+  var selQ = WP.rafDrag(selMove);   // #9 잔여(2026-11-15): caretRangeFromPoint는 프레임당 1회
   page.addEventListener("pointermove", function (e) {
     if (!down || !anchor) return;
     if (!moved && Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) < 6) return;
-    moved = true;
+    moved = true; e.preventDefault(); selQ.push(e);
+  });
+  function selMove(e) {
+    if (!down || !anchor) return;
     var f = caretAt(e.clientX, e.clientY); if (!f) return;
     var sel = document.createRange();
     if (anchor.compareBoundaryPoints(Range.START_TO_START, f) <= 0) { sel.setStart(anchor.startContainer, anchor.startOffset); sel.setEnd(f.startContainer, f.startOffset); }
     else { sel.setStart(f.startContainer, f.startOffset); sel.setEnd(anchor.startContainer, anchor.startOffset); }
-    var s = window.getSelection(); s.removeAllRanges(); s.addRange(sel); e.preventDefault();
-  });
-  page.addEventListener("pointerup", function () { down = null; anchor = null; });
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(sel);
+  }
+  function selEnd() { if (down && moved) selQ.flush(); else selQ.cancel(); down = null; anchor = null; }
+  page.addEventListener("pointerup", selEnd);
+  window.addEventListener("pointercancel", selEnd);   // 터치 중단 시 선택 드래그 상태 해제
 
   // ── 더블탭=단어 / 트리플탭=문단 ──
   var taps = 0, tapTimer = null, tapPt = null;

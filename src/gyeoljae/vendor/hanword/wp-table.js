@@ -15,7 +15,7 @@
       grid[r] = grid[r] || []; var c = 0;
       for (var i = 0; i < rows[r].cells.length; i++) {
         var td = rows[r].cells[i]; while (grid[r][c]) c++;
-        var cs = td.colSpan || 1, rs = td.rowSpan || 1;
+        var cs = td.colSpan || 1, rs = Math.min(td.rowSpan || 1, rows.length - r);   // 표 끝 너머 rowspan 은 자름(브라우저 배치와 같음, 거대 격자 방지)
         for (var dr = 0; dr < rs; dr++) for (var dc = 0; dc < cs; dc++) { grid[r + dr] = grid[r + dr] || []; grid[r + dr][c + dc] = { td: td, master: (dr === 0 && dc === 0) }; }
         c += cs;
       }
@@ -43,7 +43,7 @@
     }
     var cell = getCell(); return cell ? [cell] : [];
   }
-  function tEmit() { markDirty(); updateTableTools(); }
+  function tEmit() { var c = getCell(); if (c) recalcTable(c.closest("table")); else recalcAll(); markDirty(); updateTableTools(); }   // 구조 변경(줄·칸 추가/삭제 등) 뒤 계산식 다시
   function insertRow(below) {
     var c = getCell(); if (!c) return; var table = c.closest("table"), ncols = gridCols(buildGrid(table));
     var tr = document.createElement("tr");
@@ -72,7 +72,7 @@
     }
     tEmit();
   }
-  function mergeCells() {
+  function mergeCells() {   // (병합 대상 계산식은 해제 — 합쳐 넣은 글자를 다시 계산이 덮지 않게)
     var cells = selCells(); if (cells.length < 2) { toastMsg("두 개 이상 셀을 선택하세요"); return; }
     var table = cells[0].closest("table"), grid = buildGrid(table), rs = [], cs = [];
     cells.forEach(function (td) { var p = cellPos(grid, td); if (p) { rs.push(p.r, p.r + (td.rowSpan || 1) - 1); cs.push(p.c, p.c + (td.colSpan || 1) - 1); } });
@@ -81,8 +81,10 @@
     var mcell = grid[minr] && grid[minr][minc];                  // 비직사각형 선택 시 코너 칸 빌 수 있음
     var master = mcell ? mcell.td : cells[0], box = [];          // 없으면 첫 선택셀로 폴백(null 참조 크래시 방지)
     for (var r = minr; r <= maxr; r++) for (var c = minc; c <= maxc; c++) if (grid[r] && grid[r][c] && box.indexOf(grid[r][c].td) < 0) box.push(grid[r][c].td);
-    box.forEach(function (td) { if (td !== master) { var h = td.innerHTML.replace(/<br\s*\/?>/gi, "").trim(); if (h) master.innerHTML += " " + td.innerHTML; if (td.parentNode) td.parentNode.removeChild(td); } });
+    var mergedText = false;
+    box.forEach(function (td) { if (td !== master) { var h = td.innerHTML.replace(/<br\s*\/?>/gi, "").trim(); if (h) { master.innerHTML += " " + td.innerHTML; mergedText = true; } if (td.parentNode) td.parentNode.removeChild(td); } });
     master.colSpan = maxc - minc + 1; master.rowSpan = maxr - minr + 1;
+    if (mergedText && master.hasAttribute("data-formula")) { master.removeAttribute("data-formula"); toastMsg("병합 — 합친 글자를 지키려고 계산식 해제"); }
     var rg = document.createRange(); rg.selectNodeContents(master); rg.collapse(false); var s = window.getSelection(); s.removeAllRanges(); s.addRange(rg); tEmit();
   }
   // ── 셀 나누기(HWP식): 대상 셀을 grid-line 삽입으로 nr×nc 병합 크기까지 키운 뒤 균등 분할 → 일반 셀·병합 셀 모두 N×M 분할 ──
@@ -252,8 +254,12 @@
     // 작동가능=진하게, 불가능=흐리게: 표 좌/중/우 오프셋=글자처럼일 때만 / 병합=셀 블록 2개+
     var isChar = tmode(t) === "char", cb = page.querySelectorAll("td.cb-sel, th.cb-sel").length;
     function dim(tt, on) { var b = $("tabletools").querySelector('[data-tt=' + tt + ']'); if (b) b.classList.toggle("dim", !on); }
-    ["offXm", "offXc", "offXp"].forEach(function (tt) { dim(tt, isChar); });
-    dim("merge", cb >= 2 || selCells().length >= 2);   // 셀 블록(F5) 또는 드래그 선택 2개+ (mergeCells는 둘 다 동작)
+    // #32 D3(2026-11-15): 표 좌/중/우 정렬(↤▣↦)은 글자처럼 전용 → 고정·문단 모드에선 숨김(흐림 대신, 한 줄 점유 축소).
+    //   고정·문단에서 정렬하려면 '글자' 버튼으로 먼저 전환(정렬 액션 자체는 메뉴·단축 경로에서 종전대로 전환+적용)
+    ["offXm", "offXc", "offXp"].forEach(function (tt) { var b = $("tabletools").querySelector('[data-tt=' + tt + ']'); if (b) { b.classList.toggle("hidden", !isChar); b.classList.remove("dim"); } });
+    dim("merge", cb >= 2 || selCells().length >= 2);
+    var fc = getCell(), ff = fc && fc.getAttribute("data-formula");
+    if (ff && WP.status) WP.status("칸 계산식 =" + ff + " (바꾸기: 입력 › 표 계산식…)");   // 계산식 칸 진입 표시   // 셀 블록(F5) 또는 드래그 선택 2개+ (mergeCells는 둘 다 동작)
   }
   // ── 표 전체 단위(HWP식: 표를 지정해 삭제) ──
   function delTable() {
@@ -265,6 +271,183 @@
     if (focusEl) { var r = document.createRange(); r.selectNodeContents(focusEl); r.collapse(true); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
     page.focus(); tEmit(); toastMsg("표 삭제됨");
   }
+
+  // ── 표 계산식 라이트(2026-11-15): 칸 data-formula = SUM|AVG(ABOVE|BELOW|LEFT|RIGHT|A1[:B3]) ──
+  //   정해진 문법만 파싱(eval 없음). 값은 칸 글자로 저장 → HWPX·PDF·DOCX는 계산된 값 그대로(계산식 자체는 편집기·HTML 전용).
+  //   다시 계산: 표 안 입력(input)·표 구조 변경(tEmit)·대화상자 적용·임베드 load. 칸 이름: 열 A,B,C…(격자 기준, 병합 반영) · 줄 1,2,3…
+  //   계산식 칸에 직접 입력하면 계산식 해제(입력값 우선 — 덮어쓰기로 사라지는 놀람 방지, 토스트 안내).
+  //   ※ data-sum 은 임베드 호스트 계약(이름표, 호스트가 자기 표로 해석)이라 편집기가 계산하지 않음 — 보존 경로(복사·나누기)만 공유.
+  var FORMULA_RE = /^(SUM|AVG)\((ABOVE|BELOW|LEFT|RIGHT|([A-Z]{1,2})([1-9][0-9]{0,3})(?::([A-Z]{1,2})([1-9][0-9]{0,3}))?)\)$/;
+  WP.FORMULA_RE = FORMULA_RE;
+  function normFormula(t) { return String(t || "").replace(/^\s*=/, "").replace(/\s+/g, "").toUpperCase().replace(/합계/g, "SUM").replace(/평균/g, "AVG"); }
+  function colIdx(L) { var n = 0; for (var i = 0; i < L.length; i++) n = n * 26 + (L.charCodeAt(i) - 64); return n - 1; }
+  function colName(c) { var s = ""; c++; while (c > 0) { var m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; }
+  function cellNum(td) { return numOf(td.textContent); }
+  function numOf(s) {   // "1,200원"→1200 · "-3.5"→-3.5 · 숫자 아님→null. 쉼표 사용 여부·소수 자릿수도 돌려줌(결과 형식). 앞 64자만 봄(긴 글 칸 비용 상한)
+    var t = String(s || "").slice(0, 64).replace(/[\s ﻿]/g, ""), comma = t.indexOf(",") >= 0;
+    var m = t.replace(/,/g, "").match(/^[₩$]?([-+]?\d+(?:\.(\d+))?)(?![\d.\-\/:eE])/);   // 날짜(2026-11-15)·시각·지수 표기는 숫자 아님
+    return m ? { v: parseFloat(m[1]), dec: m[2] ? m[2].length : 0, comma: comma } : null;
+  }
+  function fmtNum(v, dec, comma) {
+    var s = v.toFixed(Math.min(dec, 4));
+    if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+    if (s === "-0") s = "0";
+    if (comma) { var p = s.split("."); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ","); s = p.join("."); }
+    return s;
+  }
+  function rangeCells(grid, pos, m, bud) {   // 계산 대상 칸(병합 master 중복 제거, 자기 자신 제외). bud=읽기 예산(넘으면 null)
+    var r0, r1, c0, c1, rows = grid.length, cols = grid._cols || gridCols(grid);
+    if (m[2] === "ABOVE") { r0 = 0; r1 = pos.r - 1; c0 = c1 = pos.c; }
+    else if (m[2] === "BELOW") { r0 = pos.r + 1; r1 = rows - 1; c0 = c1 = pos.c; }
+    else if (m[2] === "LEFT") { r0 = r1 = pos.r; c0 = 0; c1 = pos.c - 1; }
+    else if (m[2] === "RIGHT") { r0 = r1 = pos.r; c0 = pos.c + 1; c1 = cols - 1; }
+    else {
+      var a = { c: colIdx(m[3]), r: parseInt(m[4], 10) - 1 }, b = m[5] ? { c: colIdx(m[5]), r: parseInt(m[6], 10) - 1 } : a;
+      r0 = Math.min(a.r, b.r); r1 = Math.max(a.r, b.r); c0 = Math.min(a.c, b.c); c1 = Math.max(a.c, b.c);
+    }
+    var out = [], me = grid[pos.r][pos.c].td;
+    r0 = Math.max(0, r0); r1 = Math.min(rows - 1, r1); c0 = Math.max(0, c0); c1 = Math.min(cols - 1, c1);
+    if (bud) {   // 범위 넓이만큼 칸 읽기 — 미리 차감, 모자라면 계산 안 함
+      var cost = Math.max(0, r1 - r0 + 1) * Math.max(0, c1 - c0 + 1);
+      if (cost > bud.reads) { bud.hit = true; return null; }
+      bud.reads -= cost;
+    }
+    for (var r = Math.max(0, r0); r <= Math.min(rows - 1, r1); r++)
+      for (var c = Math.max(0, c0); c <= Math.min(cols - 1, c1); c++) {
+        var g = grid[r] && grid[r][c]; if (g && g.master && g.td !== me) out.push(g.td);   // master 칸만 = 병합 중복 없음(O(1))
+      }
+    return out;
+  }
+  function setCellText(td, txt) {
+    if (td.textContent === txt) return false;
+    var w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT, null), n, texts = [];
+    while ((n = w.nextNode())) if (n.nodeValue.replace(/[\s﻿]/g, "")) texts.push(n);
+    if (texts.length === 1 && !td.querySelector("table")) { texts[0].nodeValue = txt; return true; }   // 서식(span) 보존
+    td.textContent = txt; return true;
+  }
+  // 계산 예산(한 번 다시 계산할 때 문서 전체 공유): 악성·거대 문서가 탭을 얼리지 않게 실제 작업량을 센다.
+  //   cells=표당 계산식 칸 수(결재 서버 대체 경로 기준 300) · evals=칸 계산 횟수(반복 패스 포함, 문서 공유) · reads=격자 크기+범위 칸 읽기(문서 공유, 서버 기준 200만보다 훨씬 낮게).
+  //   넘으면 그 표(와 뒤 표들)는 칸에 아무것도 안 쓰고 이전 값 그대로(표 안 합계끼리 어긋나지 않음), 토스트는 한 번만(상한 안에서 끝난 계산이 나오면 다시 알림 가능).
+  var FORMULA_MAX = 300, FORMULA_EVALS = 20000, FORMULA_READS = 200000, _fCapWarned = false;
+  function fBudget() { return { evals: FORMULA_EVALS, reads: FORMULA_READS, hit: false }; }
+  WP.FORMULA_CAPS = { cells: FORMULA_MAX, evals: FORMULA_EVALS, reads: FORMULA_READS };
+  function fBudgetDone(bud) {
+    if (bud.hit || bud.capped) {
+      WP.status && WP.status("표 계산 상한(계산식 " + FORMULA_MAX + "칸·읽기 " + FORMULA_READS + "칸) — 일부는 이전 값");
+      if (!_fCapWarned) { _fCapWarned = true; toastMsg("표 계산식이 너무 많거나 범위가 커서 일부만 계산했습니다(나머지는 이전 값)"); }
+    } else _fCapWarned = false;
+  }
+  function setCycle(td, on) {   // 순환 = 화면 표시(CSS ::after "#순환")만. 칸 글자는 비워 호스트가 금액으로 읽지 않게, data-* 계약 속성은 안 건드림
+    if (on) { if (!td.hasAttribute("data-fcycle")) td.setAttribute("data-fcycle", "1"); }
+    else if (td.hasAttribute("data-fcycle")) td.removeAttribute("data-fcycle");
+  }
+  function recalcTable(table, bud) {
+    if (!table || !table.querySelector("td[data-formula],th[data-formula]")) return 0;
+    var own = !bud; bud = bud || fBudget();
+    var r = recalcTable1(table, bud);
+    if (own) fBudgetDone(bud);
+    return r;
+  }
+  function recalcTable1(table, bud) {
+    if (bud.hit) return 0;
+    Array.prototype.forEach.call(table.querySelectorAll("[data-fcycle]:not([data-formula])"), function (x) { x.removeAttribute("data-fcycle"); });   // 계산식 풀린 칸·외부 문서의 떠돌이 표식 제거
+    var all = table.querySelectorAll("td[data-formula],th[data-formula]"), fcs = [];
+    if (all.length > FORMULA_MAX) { bud.capped = true; return 0; }   // 계산식 칸이 상한(표당) 넘는 표 = 통째로 이전 값(다른 표는 계속)
+    var rows = table.rows, est = 0, r, i;   // 격자 크기 어림(병합 칸은 표 끝까지로 자름) — 만들기 전에 읽기 예산과 비교
+    for (r = 0; r < rows.length; r++) { var w = 0; for (i = 0; i < rows[r].cells.length; i++) w += Math.min(rows[r].cells[i].colSpan || 1, 1000); est = Math.max(est, w); }
+    if (est * rows.length > bud.reads) { bud.hit = true; return 0; }
+    var grid = buildGrid(table), cols = gridCols(grid), posOf = new Map();
+    grid._cols = cols;
+    for (r = 0; r < grid.length; r++) for (i = 0; grid[r] && i < grid[r].length; i++) { var g = grid[r][i]; if (g && g.master && !posOf.has(g.td)) posOf.set(g.td, { r: r, c: i }); }
+    Array.prototype.forEach.call(all, function (td) {
+      if (td.closest("table") !== table) return;   // 중첩 표는 제 표에서
+      fcs.push({ td: td, m: FORMULA_RE.exec(td.getAttribute("data-formula") || ""), pos: posOf.get(td) || null });
+    });
+    // 값은 먼저 vals 에만 계산하고 표 전체가 상한 안에서 끝났을 때만 칸에 쓴다 — 중간에 멈춰도 합계끼리 어긋난 상태가 남지 않음
+    var vals = new Map(), nums = new Map();
+    fcs.forEach(function (f) { vals.set(f.td, f.td.hasAttribute("data-fcycle") ? "" : f.td.textContent); });
+    function num(td) {
+      if (vals.has(td)) return numOf(vals.get(td));
+      if (!nums.has(td)) nums.set(td, cellNum(td));   // 일반 칸은 계산 한 번에 한 번만 읽음
+      return nums.get(td);
+    }
+    var maxPass = fcs.length + 1, pass, any = true, moved = [], fi;
+    for (pass = 0; pass < maxPass && any; pass++) {   // 계산식끼리 참조(합계의 합계) → 안정될 때까지, 칸 수+1회 넘으면 순환
+      any = false; moved = [];
+      for (fi = 0; fi < fcs.length; fi++) {
+        var f = fcs[fi], out;
+        if (--bud.evals < 0) { bud.hit = true; return 0; }   // 상한: 이 표는 통째로 이전 값
+        if (!f.m || !f.pos) out = "#식오류";
+        else {
+          var cells = rangeCells(grid, f.pos, f.m, bud);
+          if (!cells) return 0;
+          var sum = 0, n = 0, dec = 0, comma = false;
+          for (i = 0; i < cells.length; i++) { var v = num(cells[i]); if (v) { sum += v.v; n++; dec = Math.max(dec, v.dec); comma = comma || v.comma; } }
+          out = f.m[1] === "AVG" ? (n ? fmtNum(sum / n, Math.max(dec, 2), comma) : "0") : fmtNum(sum, dec, comma);
+          if (!isFinite(sum)) out = "";   // 넘침 = 순환과 같게(아래에서 표시)
+        }
+        if (vals.get(f.td) !== out) { vals.set(f.td, out); any = true; moved.push(f); }
+      }
+    }
+    var cyc = any ? moved : [], changed = 0;   // 끝까지 흔들린 칸 = 서로 참조(순환) — 값 없음+표시만
+    fcs.forEach(function (f) {
+      var isCyc = cyc.indexOf(f) >= 0 || (f.m && vals.get(f.td) === "");
+      if (setCellText(f.td, isCyc ? "" : vals.get(f.td))) changed++;
+      setCycle(f.td, isCyc);
+    });
+    return changed;
+  }
+  function recalcAll() {
+    var n = 0, bud = fBudget();
+    Array.prototype.forEach.call(page.querySelectorAll("table"), function (t) { if (!bud.hit) n += recalcTable(t, bud); });
+    fBudgetDone(bud);
+    return n;
+  }
+  WP.recalcFormulas = recalcAll;
+  page.addEventListener("input", function (e) {
+    var c = getCell(); if (!c) return;
+    if (c.hasAttribute("data-formula") && /^(insert|delete)/.test(e.inputType || "insert")) {   // 서식(format*)·되돌리기는 계산식 유지   // 계산식 칸 직접 입력 = 계산식 해제(입력값 우선)
+      c.removeAttribute("data-formula"); toastMsg("계산식 해제 — 직접 입력한 값을 씁니다"); WP.status && WP.status("계산식 해제됨");
+    }
+    recalcTable(c.closest("table"));
+  });
+  var _fCell = null;
+  function formulaOpen() {
+    var c = getCell(); if (!c) { toastMsg("표 칸에 커서를 두고 실행하세요"); return; }
+    _fCell = c; saveRange();
+    var t = c.closest("table"), pos = cellPos(buildGrid(t), c), cur = c.getAttribute("data-formula") || "", m = FORMULA_RE.exec(cur);
+    $("fm-fn").value = m ? m[1] : "SUM";
+    var dirs = { ABOVE: 1, BELOW: 1, LEFT: 1, RIGHT: 1 };
+    $("fm-range").value = m ? (dirs[m[2]] ? m[2] : "CUSTOM") : (pos && pos.r > 0 ? "ABOVE" : "LEFT");
+    $("fm-ref").value = m && !dirs[m[2]] ? m[2] : (pos ? "A1:" + colName(Math.max(0, pos.c - 1)) + (pos.r + 1) : "");
+    $("fm-here").textContent = pos ? "이 칸 = " + colName(pos.c) + (pos.r + 1) + " · 열 A,B,C… 줄 1,2,3…" : "";
+    $("fm-clear").classList.toggle("hidden", !cur);
+    formulaPreview(); openModal("m-formula");
+  }
+  function formulaText() {
+    var r = $("fm-range").value, ref = r === "CUSTOM" ? normFormula($("fm-ref").value) : r;
+    return $("fm-fn").value + "(" + ref + ")";
+  }
+  function formulaPreview() {
+    $("fm-ref").closest(".frow").classList.toggle("hidden", $("fm-range").value !== "CUSTOM");
+    var f = formulaText(), okf = FORMULA_RE.test(f);
+    $("fm-prev").textContent = okf ? "=" + f : "칸 범위 형식: A1 또는 A1:B3";
+    $("fm-prev").classList.toggle("bad", !okf);
+  }
+  ["fm-fn", "fm-range", "fm-ref"].forEach(function (id) { var e = $(id); if (e) { e.addEventListener("change", formulaPreview); e.addEventListener("input", formulaPreview); } });
+  function formulaApply() {
+    var f = formulaText(), c = _fCell;
+    if (!FORMULA_RE.test(f)) { toastMsg("범위 형식 오류 — 예: A1:A3"); return; }
+    if (!c || !c.isConnected) { closeModal($("m-formula")); toastMsg("대상 칸이 사라졌습니다"); return; }
+    c.setAttribute("data-formula", f); recalcTable(c.closest("table"));
+    closeModal($("m-formula")); restoreRange(); tEmit();
+    toastMsg("계산식 =" + f + " → " + (c.textContent || "")); WP.status && WP.status("칸 계산식 =" + f);
+  }
+  function formulaClear() {
+    var c = _fCell; closeModal($("m-formula"));
+    if (c && c.isConnected && c.hasAttribute("data-formula")) { c.removeAttribute("data-formula"); restoreRange(); tEmit(); toastMsg("계산식 지움(값은 남김)"); }
+  }
+  function formulaRecalc() { var n = recalcAll(); if (n) markDirty(); toastMsg(page.querySelector("[data-formula]") ? "표 계산 다시 함 — " + n + "칸 바뀜" : "계산식 칸이 없습니다"); }
   var TT = { rowAbove: function () { insertRow(false); }, rowBelow: function () { insertRow(true); },
     colLeft: function () { insertCol(false); }, colRight: function () { insertCol(true); },
     delRow: function () {                              // rowspan 보존(#9, HEAD fd4b780 복원): 삭제 행에서 시작하는 병합 셀은 내용째 다음 행으로 이관, 관통 셀은 rowspan만 감소
@@ -398,6 +581,7 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.target && e.target.closest && e.target.closest(".modal")) return;
+    if (e.target && e.target !== page && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName || "")) return;   // 도구 모음 칸(글자 크기·줄 간격 등)의 방향키가 셀 블록을 넓히지 않게
     var inTable = !!getCell();
     if (inTable && e.key === "F5") { e.preventDefault(); cellBlock(); toastMsg("셀 블록 — 방향키로 확장 · M합치기 S나누기 L테두리 C배경 · H높이맞춤 W너비맞춤 A자동채움 · Alt+Ins/Del 줄추가/삭제 · Ctrl+방향 셀크기 · Esc 해제"); return; }
     if (inTable && e.key === "F8") { e.preventDefault(); selectRow(); toastMsg("줄(행) 블록 · 맞춤법(F8)은 표 밖에서"); return; }
@@ -483,12 +667,14 @@
     if (Math.abs(e.clientY - r.bottom) <= EDGE) return { type: "row", tr: td.parentNode };
     return null;
   }
+  // #9 잔여(2026-11-15): 경계 드래그 적용 = rAF 합치기(프레임당 1회), 놓기·pointercancel 때 flush 후 종료
+  var edgeQ = WP.rafDrag(function (e) {
+    if (!drag) return;   // 드래그도 setColWidth/setRowHeight 공통 경로(열 전체 width+minWidth) — Ctrl+방향과 저장 형식 일치
+    if (drag.type === "col") setColWidth(drag.td, drag.w0 + (e.clientX - drag.x0));
+    else setRowHeight(drag.tr, drag.h0 + (e.clientY - drag.y0));
+  });
   page.addEventListener("pointermove", function (e) {
-    if (drag) {   // 드래그도 setColWidth/setRowHeight 공통 경로(열 전체 width+minWidth) — Ctrl+방향과 저장 형식 일치
-      if (drag.type === "col") setColWidth(drag.td, drag.w0 + (e.clientX - drag.x0));
-      else setRowHeight(drag.tr, drag.h0 + (e.clientY - drag.y0));
-      e.preventDefault(); return;
-    }
+    if (drag) { edgeQ.push(e); e.preventDefault(); return; }
     // 표 밖이면 비싼 히트테스트(elementFromPoint+rect) 생략 — e.target만으로 빠르게 컷
     var overTd = e.target && e.target.closest ? e.target.closest("td,th") : null;
     if (!overTd) { if (page.style.cursor) page.style.cursor = ""; return; }
@@ -508,7 +694,9 @@
     drag = hit.type === "col" ? { type: "col", td: hit.td, x0: e.clientX, w0: hit.td.getBoundingClientRect().width, pid: e.pointerId }
                               : { type: "row", tr: hit.tr, y0: e.clientY, h0: hit.tr.getBoundingClientRect().height, pid: e.pointerId };
   }, true);
-  window.addEventListener("pointerup", function () { if (drag) { try { page.releasePointerCapture(drag.pid); } catch (x) {} drag = null; page.style.cursor = ""; tEmit(); } });
+  function endEdgeDrag() { if (drag) { edgeQ.flush(); try { page.releasePointerCapture(drag.pid); } catch (x) {} drag = null; page.style.cursor = ""; tEmit(); } else edgeQ.cancel(); }
+  window.addEventListener("pointerup", endEdgeDrag);
+  window.addEventListener("pointercancel", endEdgeDrag);
 
   // ── 표 배치(개체) — HWP 3모드: 글자처럼/고정/어울림(2026-07-13: data-place 단일화 + 명시 3버튼) ──
   var PLACES = ["char", "fixed", "float"];
@@ -645,7 +833,7 @@
         if (cs > 1) at += ' colspan="' + cs + '"';
         if (rs > 1) at += ' rowspan="' + rs + '"';
         var stc = cell.td.getAttribute("style"); if (stc) at += ' style="' + stc.replace(/"/g, "&quot;") + '"';
-        ["data-field", "data-sum"].forEach(function (k) { var v = cell.td.getAttribute(k); if (v !== null) at += " " + k + '="' + WP.esc(v) + '"'; });
+        ["data-field", "data-sum", "data-formula"].forEach(function (k) { var v = cell.td.getAttribute(k); if (v !== null) at += " " + k + '="' + WP.esc(v) + '"'; });
         html += "<" + tag + at + ">" + cell.td.innerHTML + "</" + tag + ">";
       }
       html += "</tr>";
@@ -736,8 +924,10 @@
         dl: tr.left - pr.left - padL };   // 표의 페이지 콘텐츠박스 기준 시작 left(어울림 좌/우 자동전환용)
       try { tblhandle.setPointerCapture(e.pointerId); } catch (x) {}
     });
-    tblhandle.addEventListener("pointermove", function (e) {
-      if (!hdrag || !freeTable) return; e.preventDefault();
+    var hQ = WP.rafDrag(hMove);   // #9 잔여: 표 손잡이 이동도 rAF 합치기
+    tblhandle.addEventListener("pointermove", function (e) { if (!hdrag || !freeTable) return; e.preventDefault(); hQ.push(e); });
+    function hMove(e) {
+      if (!hdrag || !freeTable) return;
       var dx = e.clientX - hdrag.x, dy = e.clientY - hdrag.y;
       if (hdrag.mode === "float") {   // 어울림: 개체 위치에 따라 float 방향 자동전환 → 글이 항상 넓은 쪽으로 흐름(빈공간 최소화)
         var pg = document.getElementById("page"), pcs = getComputedStyle(pg);
@@ -755,8 +945,11 @@
         freeTable.style.top = Math.max(0, hdrag.t + dy) + "px";
       }
       placeHandle();
-    });
-    tblhandle.addEventListener("pointerup", function (e) { if (hdrag) { hdrag = null; markDirty(); } try { tblhandle.releasePointerCapture(e.pointerId); } catch (x) {} });
+    }
+    function hEnd() { if (hdrag) { hQ.flush(); hdrag = null; markDirty(); } else hQ.cancel(); }
+    tblhandle.addEventListener("pointerup", function (e) { hEnd(); try { tblhandle.releasePointerCapture(e.pointerId); } catch (x) {} });
+    tblhandle.addEventListener("pointercancel", hEnd);
+    tblhandle.addEventListener("lostpointercapture", hEnd);
   }
   function placeHandle() {
     if (!freeTable) { if (tblhandle) tblhandle.classList.add("hidden"); if (WP.hideZButtons) WP.hideZButtons(); return; }
@@ -819,5 +1012,6 @@
   WP.alignTableIfSelected = alignTableIfSelected;      // Ctrl+Shift+L/C/R → 표 objline 정렬 라우팅(wp-format)
   // 표 명령(TT)은 표도구막대가 TT 객체로 직접 호출 — ACT 등록 불요(2026-07-16 셀메뉴 삭제로 ACT판 유일소비자 소멸).
   WP.register(TT);   // 표 명령을 ACT에 등록 → 툴바·우클릭 메뉴·단축키가 동일 명령/대상 공유(일관성, 웹포팅 복원 2026-07-17 — embed 분기가 미포함)
+  WP.register({ formula: formulaOpen, formulaApply: formulaApply, formulaClear: formulaClear, formulaRecalc: formulaRecalc });
   WP.register({ table: function () { saveRange(); openModal("m-table"); }, tableApply: tableApply, splitApply: splitApply, borderDlg: openBorderDlg });
 })();

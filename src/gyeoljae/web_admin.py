@@ -11,7 +11,7 @@ from .org import EMP_STATUS
 from .web import Resp, esc, redirect
 
 NAV = [("/admin/emp", "사원 관리"), ("/admin/dept", "부서"), ("/admin/pos", "직위"), ("/admin/policy", "결재규정"), ("/admin/forms", "양식"),
-       ("/admin/changes", "변경요청·설정"), ("/admin/smtp", "외부 메일"), ("/admin/audit", "감사로그")]
+       ("/admin/changes", "변경요청·설정"), ("/admin/smtp", "외부 메일"), ("/admin/onlyoffice", "OnlyOffice"), ("/admin/audit", "감사로그")]
 
 
 def admin_route(h, app, user, p):
@@ -358,6 +358,9 @@ def admin_route(h, app, user, p):
         return ok("변경요청·설정", body)
 
     # ---------------------------------------------------------------- 외부 메일(SMTP)
+    if p == "/admin/onlyoffice":
+        from .web_oo import admin_page
+        return admin_page(h, app, user, ok)
     if p == "/admin/smtp":
         note = ""
         if post:

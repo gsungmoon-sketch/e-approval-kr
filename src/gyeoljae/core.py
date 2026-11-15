@@ -31,6 +31,7 @@ from .home import HomeMixin
 from .mail import MailMixin
 from .forms import FormsMixin
 from .filing import FilingMixin, KEEP as _KEEP
+from .onlyoffice import OnlyOfficeMixin
 from . import policy as pol
 from .doctemplate import extract_fields
 
@@ -82,7 +83,8 @@ def _retry_io(fn, *a):
             time.sleep(0.05 * (i + 1))
 
 
-class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, FilingMixin, ServerConfMixin):
+class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, FilingMixin, ServerConfMixin,
+          OnlyOfficeMixin):
     def __init__(self, data_dir=None):
         self.dir = Path(data_dir) if data_dir else default_data_dir()
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -818,7 +820,8 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
                 keep = []
                 for a in meta["attachments"]:
                     if a["idx"] in rm:
-                        c.after.append((_unlink, self._doc_dir(doc_id) / "files" / a["stored"]))
+                        for st in [a["stored"]] + [x["stored"] for x in a.get("prev", [])]:  # 편집 이전 판까지
+                            c.after.append((_unlink, self._doc_dir(doc_id) / "files" / st))
                     else:
                         keep.append(a)
                 meta["attachments"] = keep
@@ -1062,6 +1065,43 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
                     raise NotFound("첨부 없음")
                 return a["name"], p
         raise NotFound("첨부 없음")
+
+    def attachment_replace(self, actor, doc_id, idx, data: bytes, note=""):
+        """첨부 내용 바꾸기(새 판) — 첨부를 지우고 다시 올릴 수 있는 사람만(기안자, 기안중·회수·반려).
+        이름·번호는 그대로, 이전 내용은 prev 에 보존. 같은 내용이면 아무것도 안 함."""
+        if not data:
+            raise Invalid("빈 파일")
+        if len(data) > MAX_FILE_BYTES:
+            raise Invalid(f"첨부 1개 최대 {MAX_FILE_BYTES // 1048576}MB")
+        with self._tx() as c:
+            self._editable(c, actor, doc_id)
+            meta, _ = self._read_doc(doc_id)
+            a = next((x for x in meta.get("attachments", []) if x["idx"] == int(idx)), None)
+            if a is None:
+                raise NotFound("첨부 없음")
+            h = sha256(data)
+            if h == a["sha256"]:
+                return {"doc": int(doc_id), "idx": a["idx"], "ver": a.get("ver", 1), "unchanged": True}
+            if sum(x["size"] for x in meta["attachments"]) - a["size"] + len(data) > MAX_TOTAL_BYTES:
+                raise Invalid(f"첨부 합계 최대 {MAX_TOTAL_BYTES // 1048576}MB")
+            ext = os.path.splitext(a["stored"])[1]
+            ver = a.get("ver", 1) + 1
+            d = (self._doc_dir(doc_id) / "files").resolve()
+            stored = f"{a['idx']:02d}v{ver}{ext}"
+            if (d / stored).resolve().parent != d:
+                raise Invalid("잘못된 경로")
+            a.setdefault("prev", []).append({"stored": a["stored"], "sha256": a["sha256"], "size": a["size"],
+                                             "ver": a.get("ver", 1)})
+            a.update(stored=stored, size=len(data), sha256=h, ver=ver)
+            c.after.insert(0, (_atomic_write, d / stored, data))
+            meta["rev"] = meta.get("rev", 0) + 1
+            meta["submitted"] = None
+            c.execute("delete from doc_party where doc_id=? and kind='proxy'", (int(doc_id),))
+            self._hist(meta, actor, "attach_edit", a["name"])
+            self._audit(c, actor, "attach_edit", int(doc_id), {"idx": a["idx"], "name": a["name"], "ver": ver,
+                                                                "sha256": h, "note": (note or "")[:200]})
+            self._write_doc(c, meta)
+        return {"doc": int(doc_id), "idx": a["idx"], "ver": ver}
 
     def _rows(self, c, where, args, limit=200):
         q = (f"select d.id,d.title,d.drafter,u.name as drafter_name,d.dept,d.status,d.created,d.submitted,"

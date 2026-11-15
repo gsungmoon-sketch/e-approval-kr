@@ -154,6 +154,14 @@ def add_admin_parsers(sp):
         x.add_argument("--" + k, choices=["on", "off"])
     x.add_argument("--password-stdin", action="store_true")
     x = ss.add_parser("test"); x.add_argument("to")
+    s = sp.add_parser("onlyoffice", help="OnlyOffice 문서 서버 연동 설정(관리자, 기본 꺼짐)")
+    ss = s.add_subparsers(dest="sub", required=True)
+    ss.add_parser("show")
+    x = ss.add_parser("set")
+    for k in ("docs-url", "docs-internal-url", "app-internal-url", "jwt-header"):
+        x.add_argument("--" + k)
+    x.add_argument("--enabled", choices=["on", "off"])
+    x.add_argument("--jwt-secret-stdin", action="store_true", help="JWT 비밀을 표준입력 첫 줄로")
     s = sp.add_parser("pin", help="공지 고정/해제(관리자)"); s.add_argument("post", type=int)
     s.add_argument("--off", action="store_true")
 
@@ -322,6 +330,17 @@ def run_admin(args, app, a, out):
         if args.password_stdin:
             kw["password"] = sys.stdin.readline().rstrip("\r\n")
         r = app.smtp_set(a, **kw)
+        return out(args, r, "저장됨")
+    if c == "onlyoffice":
+        if args.sub == "show":
+            r = app.oo_get(a)
+            return out(args, r, "\n".join(f"{k}: {v}" for k, v in r.items()))
+        kw = {k: getattr(args, k) for k in ("docs_url", "docs_internal_url", "app_internal_url", "jwt_header")}
+        if args.enabled is not None:
+            kw["enabled"] = args.enabled == "on"
+        if args.jwt_secret_stdin:
+            kw["jwt_secret"] = sys.stdin.readline().rstrip("\r\n")
+        r = app.oo_set(a, **kw)
         return out(args, r, "저장됨")
     if c == "home":
         h = app.home(a)

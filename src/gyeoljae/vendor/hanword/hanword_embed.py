@@ -131,10 +131,12 @@ def _font_server(fontdir):
 # ───────────── 정제(편집기 wp-embed.js sanitizeEmbed 와 같은 허용목록) ─────────────
 TAGS = set(("p div span br hr b strong i em u s strike del sub sup h1 h2 h3 h4 h5 h6 ul ol li "
             "table thead tbody tfoot tr td th caption colgroup col a img blockquote pre code font").split())
-DROP = set(("script style template iframe frame frameset object embed applet noscript noembed noframes svg math head title meta link base "
+DROP = set(("script style template iframe frame frameset object embed applet noscript noembed noframes svg math title meta link base "
             "form input button select option optgroup textarea datalist output video audio source track canvas map area xmp plaintext listing "
-            "dialog slot portal marquee").split())
+            "dialog slot portal marquee").split())   # head 는 없음: 본문 속 <head> 는 브라우저가 태그만 무시(자식은 보임) → 껍데기만 벗김
 VOID = {"br", "hr", "img", "col"}
+HTML_VOID = VOID | {"area", "base", "basefont", "bgsound", "embed", "frame", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"}
+#   브라우저 void = 닫는 태그 없음. 버릴 요소라도 void 면 「짝 닫는 태그까지」 건너뛰지 않음(<meta charset> 뒤 본문 통째 유실 방지).
 COMMON = {"style", "class", "title", "align"}
 PER_TAG = {"td": {"colspan", "rowspan", "valign", "width", "height"}, "th": {"colspan", "rowspan", "valign", "width", "height"},
            "tr": {"valign", "height"}, "table": {"border", "cellpadding", "cellspacing", "width"},
@@ -144,6 +146,7 @@ DATA_OK = {"data-field", "data-row", "data-sum"}
 DATA_TAGS = {"td", "th", "tr", "table", "span"}
 _DV = r"[A-Za-z0-9_.\-\u3131-\u318E\uAC00-\uD7A3]{1,64}"
 DATA_VAL = re.compile(_DV + r"(," + _DV + r"){0,15}")   # 이름 또는 쉼표 이름 목록(식 아님 — 호스트도 eval 금지). wp-embed.js 와 동일
+FORMULA_VAL = re.compile(r"(SUM|AVG)\((ABOVE|BELOW|LEFT|RIGHT|[A-Z]{1,2}[1-9][0-9]{0,3}(:[A-Z]{1,2}[1-9][0-9]{0,3})?)\)")   # 표 계산식(td/th) — 편집기가 정해진 문법만 해석(eval 없음). wp-embed.js·wp-table.js FORMULA_RE 와 동일
 CLASS_OK = {"pgbreak", "objline", "wp-hr", "caption"}
 NUM = re.compile(r"\d{1,4}(\.\d{1,2})?(%|px)?")
 CSS_PROP = re.compile(r"(color|background-color|font|font-(family|size|weight|style|variant)|text-(align|indent|decoration|decoration-line|decoration-style|decoration-color|transform)|line-height|letter-spacing|word-spacing|vertical-align|white-space|word-break|margin(-(top|right|bottom|left))?|padding(-(top|right|bottom|left))?|border(-(top|right|bottom|left))?(-(width|style|color))?|border-collapse|border-spacing|width|height|min-width|max-width|min-height|max-height|table-layout|list-style-type|page-break-(before|after|inside)|break-(before|after|inside))")
@@ -183,21 +186,29 @@ class _San(EofSafeParser):
         self.out = []; self.stack = []; self.skip = 0; self.skip_tag = None
     def handle_starttag(self, tag, attrs, self_closing=False):
         if self.skip:
-            if tag == self.skip_tag and tag not in VOID: self.skip += 1
+            if tag == self.skip_tag and tag not in HTML_VOID: self.skip += 1
             return
+        if tag == "plaintext":   # 브라우저: 이후 전부 글자(닫는 태그 없음) → 편집기처럼 끝까지 버림(</plaintext> 뒤 서버만 보는 글 차단)
+            self.skip = 1; self.skip_tag = None; return
         if tag in DROP:   # 브라우저처럼 "/>" 는 무시 — 짝 닫는 태그까지 통째 버림(<title/>…</title> 숨김 글 차단)
-            if tag not in VOID: self.skip = 1; self.skip_tag = tag
+            if tag not in HTML_VOID: self.skip = 1; self.skip_tag = tag
             return
-        if dict(attrs).get("id") == "wpmeta":   # 편집기 메타는 버림(용지는 page 인자로)
-            if tag not in VOID and not self_closing: self.skip = 1; self.skip_tag = tag
+        first = {}
+        for k, v in attrs:   # 같은 이름 속성 = 브라우저처럼 첫 것만(뒤 것을 남기면 호스트 파서·브라우저가 서로 다른 값을 읽음)
+            first.setdefault(k.lower(), v)
+        if first.get("id") == "wpmeta":   # 편집기 메타는 버림(용지는 page 인자로)
+            if tag not in HTML_VOID and not self_closing: self.skip = 1; self.skip_tag = tag
             return
         if tag not in TAGS or len(self.stack) > 200: return
         a = []
         pt = PER_TAG.get(tag, ())
-        for k, v in attrs:
-            k = k.lower(); v = "" if v is None else v
+        for k, v in first.items():
+            v = "" if v is None else v
             if k in DATA_OK:
                 if tag in DATA_TAGS and DATA_VAL.fullmatch(v): a.append((k, v))
+                continue
+            if k == "data-formula":
+                if tag in ("td", "th") and FORMULA_VAL.fullmatch(v): a.append((k, v))
                 continue
             if k not in COMMON and k not in pt: continue
             cv = _clean_attr(tag, k, v)

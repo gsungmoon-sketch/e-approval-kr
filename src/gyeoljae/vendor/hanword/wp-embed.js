@@ -34,6 +34,7 @@
   var DATA_OK = { "data-field": 1, "data-row": 1, "data-sum": 1 };              // 계약: 이 3개만
   var DATA_TAGS = { td: 1, th: 1, tr: 1, table: 1, span: 1 };                    // 표 칸·줄·표·글자 묶음에만
   var DATA_VAL = /^[A-Za-z0-9_.\-\u3131-\u318E\uAC00-\uD7A3]{1,64}(,[A-Za-z0-9_.\-\u3131-\u318E\uAC00-\uD7A3]{1,64}){0,15}$/;   // 이름 또는 쉼표 이름 목록만(괄호·공백·따옴표·콜론 없음 — 식 아님, 부모도 eval 금지). hanword_embed.DATA_VAL 과 동일
+  var FORMULA_VAL = /^(SUM|AVG)\((ABOVE|BELOW|LEFT|RIGHT|[A-Z]{1,2}[1-9][0-9]{0,3}(:[A-Z]{1,2}[1-9][0-9]{0,3})?)\)$/;   // 표 계산식(td/th만) — 편집기가 정해진 문법만 해석(eval 없음), hanword_embed.py 와 동일
   var CLASS_OK = { pgbreak: 1, objline: 1, "wp-hr": 1, caption: 1 };
   var NUM = /^\d{1,4}(\.\d{1,2})?(%|px)?$/;
   var CSS_PROP = /^(color|background-color|font|font-(family|size|weight|style|variant)|text-(align|indent|decoration|decoration-line|decoration-style|decoration-color|transform)|line-height|letter-spacing|word-spacing|vertical-align|white-space|word-break|margin(-(top|right|bottom|left))?|padding(-(top|right|bottom|left))?|border(-(top|right|bottom|left))?(-(width|style|color))?|border-collapse|border-spacing|width|height|min-width|max-width|min-height|max-height|table-layout|list-style-type|page-break-(before|after|inside)|break-(before|after|inside))$/;
@@ -104,6 +105,7 @@
         for (var i = 0; i < n.attributes.length; i++) {
           var a = n.attributes[i], name = a.name.toLowerCase(), v;
           if (has(DATA_OK, name)) { if (has(DATA_TAGS, tag) && DATA_VAL.test(a.value)) el.setAttribute(name, a.value); continue; }
+          if (name === "data-formula") { if ((tag === "td" || tag === "th") && FORMULA_VAL.test(a.value)) el.setAttribute(name, a.value); continue; }
           if (!has(COMMON, name) && !has(pt, name)) continue;
           v = cleanAttr(tag, name, a.value);
           if (v !== null && v !== "") el.setAttribute(name, v);
@@ -127,7 +129,7 @@
 
   // ───────────── 읽기 전용 ─────────────
   var readOnly = false;
-  var RO_ACT = { copy: 1, selectall: 1, find: 1, findNext: 1, findPrev: 1, fullview: 1, fullscreen: 1, outline: 1, pageguide: 1, wordcount: 1, browserPrint: 1 };
+  var RO_ACT = { copy: 1, selectall: 1, find: 1, findNext: 1, findPrev: 1, fullview: 1, fullscreen: 1, outline: 1, pageguide: 1, wordcount: 1, browserPrint: 1, help: 1, guide: 1, tbLayout97: 1, tbLayoutClassic: 1 };   // 도움말·도구 모음 모양 전환은 문서를 안 바꿈
   var EMBED_NO = { header: 1, pagenum: 1, headFootApply: 1 };   // 머리말/꼬리말·쪽번호 = 호스트 몫(임베드에선 항상 금지)
   WP.actBlocked = function (act) {
     if (has(EMBED_NO, act)) return "머리말·꼬리말·쪽 번호는 결재 서버가 넣습니다";
@@ -209,6 +211,7 @@
       var pg = (d.page && (typeof d.page === "string" || typeof d.page === "object")) ? d.page : (r.page || {});
       WP.setPaper(pg); stripHeadFoot();                  // 지정 없으면 기본(A4·20mm)으로 초기화 — 이전 문서 설정 잔류 방지
       if (WP.normalizeEdges) WP.normalizeEdges();
+      if (WP.recalcFormulas && !readOnly) WP.recalcFormulas();   // 호스트가 채운 데이터 칸 → 계산식 칸 값 맞춤(읽기 전용은 그대로 표시)
       if (WP.pageGuides) WP.pageGuides();
       if (WP.histReset) WP.histReset();
       WP.clean();

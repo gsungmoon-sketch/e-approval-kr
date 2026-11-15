@@ -114,6 +114,7 @@ details.paperprev>summary{cursor:pointer;font-weight:700}
 .edhost iframe{width:100%;height:80vh;min-height:480px;border:1px solid var(--line);background:#e9e9e9;display:block}
 .card.dochtml{overflow-x:auto}.card.dochtml table{border-collapse:collapse;margin:6px 0}
 .card.dochtml th,.card.dochtml td{border:1px solid var(--line);padding:4px 6px}
+body.oo{height:100vh;display:flex;flex-direction:column;overflow:hidden}.oo-bar{display:flex;gap:10px;align-items:center;padding:6px 12px;background:var(--side);border-bottom:1px solid var(--line);flex-wrap:wrap}.oo-wrap{flex:1;min-height:0}.oo-wrap>*{width:100%;height:100%;border:0;display:block}
 """ + PAPER_CSS
 
 
@@ -144,7 +145,8 @@ def make_handler(app: App):
         timeout = 30  # slowloris 방어
 
         def log_message(self, fmt, *a):
-            sys.stderr.write("%s %s\n" % (self.client_ip(), fmt % a))
+            line = re.sub(r"(/oo/(?:dl|cb)/)[A-Za-z0-9_.-]+", r"\1<token>", fmt % a)  # 서명 토큰은 로그에 남기지 않음
+            sys.stderr.write("%s %s\n" % (self.client_ip(), line))
 
         def client_ip(self):
             if TRUST_PROXY:
@@ -182,7 +184,12 @@ def make_handler(app: App):
         def send(self, r: Resp):
             self.send_response(r.status)
             kind = getattr(self, "_csp", None)
-            h = {"Content-Security-Policy": CSP.get(kind, _BASE_CSP),
+            if isinstance(kind, tuple):  # ("oo", 문서 서버 출처) — OnlyOffice 편집기 화면만
+                from .web_oo import editor_csp
+                csp = editor_csp(kind[1])
+            else:
+                csp = CSP.get(kind, _BASE_CSP)
+            h = {"Content-Security-Policy": csp,
                  "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN" if kind == "editor" else "DENY",
                  "Referrer-Policy": "same-origin",
                  "Cache-Control": "no-store"}
@@ -210,6 +217,10 @@ def make_handler(app: App):
                 self.form, self.files, self.multi = {}, [], {}
                 self._aside = None
                 self._csp = None
+                if self.route.startswith("/oo/dl/") or self.route.startswith("/oo/cb/"):  # 문서 서버 전용(세션 없음)
+                    from .web_oo import public_route
+                    self.send(public_route(self, app))
+                    return
                 self.sess = app.session(self.cookie())
                 self.me = None
                 if self.sess:
@@ -303,7 +314,7 @@ def make_handler(app: App):
                 doc_body = shell(self, app, me, body, box)
             doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8>"
                    f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=11'></head>"
+                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=12'></head>"
                    f"<body>{doc_body}</body></html>")
             return doc.encode("utf-8")
 
@@ -344,6 +355,11 @@ def make_handler(app: App):
                 return redirect("/editor/embed.html" + ("?" + q if q else ""))
             if p.startswith("/editor/"):
                 return self.static_file(EDITOR_BASE, p[len("/editor/"):], editor=True)
+            if p.startswith("/oo/edit/"):
+                from .web_oo import route as oo_route
+                r = oo_route(self, app, user, p)
+                if r is not None:
+                    return r
             from .web_home import route as home_route
             hr = home_route(self, app, user, p)
             if hr is not None:

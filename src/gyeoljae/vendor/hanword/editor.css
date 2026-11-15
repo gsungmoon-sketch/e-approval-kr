@@ -195,6 +195,9 @@ body.zen #topbar, body.zen #toolbar, body.zen #tabletools{ display:none !importa
 .dlg-f button:active { filter:brightness(.94); }
 .frow { display:flex; align-items:center; gap:8px; margin:9px 0; font-size:13px; color:#1b2733; }
 .frow > label { flex:0 0 78px; color:#3a4654; }
+#fm-prev { font-family:"D2Coding",monospace; font-size:13px; color:#1b2733; }
+#fm-prev.bad, #f-count.bad { color:#b3261e; }
+.frow.sec-on { background:#eaf2fd; box-shadow:inset 3px 0 0 #2f6fd6; border-radius:4px; }   /* #32 D1: 연 메뉴의 구역 강조 */
 .frow select, .frow input[type=text], .frow input[type=number] { border:1px solid #aab2bc; border-radius:4px; padding:5px 7px; font-family:inherit; font-size:13px; background:#fff; }
 .frow input[type=number]{ width:64px; } .frow input[type=text]{ flex:1 1 auto; }
 .frow input[type=color]{ width:40px; height:28px; border:1px solid #aab2bc; border-radius:4px; background:#fff; }
@@ -482,3 +485,41 @@ button:focus-visible, select:focus-visible, input:focus-visible, .mb:focus-visib
 html.wp-embed #docname, html.wp-embed #autosave-lbl { display:none !important; }
 html.wp-ro #toolbar, html.wp-ro #ruler, html.wp-ro #tabletools, html.wp-ro #objtools, html.wp-ro #aligntools,
 html.wp-ro #croptools, html.wp-ro #zordertools, html.wp-ro #placetools, html.wp-ro #shapetools { display:none !important; }
+/* ══ 도구 모음 한글97식(wp-toolbar.js, 기본) — 표준 막대 + 서식 막대 두 줄. 기존 모양(#toolbar 한 줄)은 위 규칙 그대로 ══ */
+#toolbar.tb97 { display:block; position:relative; padding:0; overflow:visible; gap:0; -webkit-mask-image:none !important; mask-image:none !important; }
+#toolbar.tb97 .tb-row { display:flex; flex-wrap:nowrap; align-items:center; gap:2px; padding:2px 4px; overflow:hidden; }
+#toolbar.tb97 .tb-std { background:linear-gradient(#f7f8fa,#eceff3); border-bottom:1px solid #d5dae0; }
+#toolbar.tb97 .t-btn { border-color:transparent; background:transparent; min-width:26px; padding:0 4px; color:#1b2733; }
+#toolbar.tb97 .t-btn:hover { background:#f0f5fc; border-color:#8fb2e8; }
+#toolbar.tb97 .t-btn:active { background:#2f6fd6; color:#fff; }
+#toolbar.tb97 .t-btn.on { background:#cfe0f5; border-color:#2f6fd6; box-shadow:inset 0 1px 2px rgba(0,0,0,.18); }   /* 커서 위치 서식(진하게·정렬·목록) 눌린 표시 */
+#toolbar.tb97 .tb-ic { display:block; pointer-events:none; }
+#toolbar.tb97 .t-sep { height:18px; margin:0 3px; }
+#toolbar.tb97 #styleSel { max-width:88px; }
+#toolbar.tb97 #fontSel { max-width:104px; }
+#toolbar.tb97 .tb-size { display:inline-flex; align-items:center; flex:0 0 auto; }
+#toolbar.tb97 .tb-sizebox { width:38px; max-width:38px; border-radius:4px 0 0 4px; text-align:right; padding:0 3px; }
+#toolbar.tb97 .tb-size #sizeSel { width:18px; max-width:18px; padding:0; margin-left:-1px; border-radius:0 4px 4px 0; color:transparent; }
+#toolbar.tb97 .tb-size #sizeSel option { color:#1b2733; }
+#toolbar.tb97 .tb-line { max-width:62px; }
+#toolbar.tb97 .tb-cwrap { display:inline-flex; flex:0 0 auto; }
+#toolbar.tb97 .tb-color { flex-direction:column; gap:1px; padding:2px 4px 3px; border-radius:4px 0 0 4px; }
+#toolbar.tb97 .tb-ca { font-size:13px; line-height:1; }
+#toolbar.tb97 .tb-cbar { display:block; width:14px; height:3px; border-radius:1px; }
+#toolbar.tb97 .tb-drop { min-width:14px; padding:0 1px; font-size:10px; border-radius:0 4px 4px 0; }
+#toolbar.tb97 .tb-more { font-weight:bold; margin-left:auto; }
+#toolbar.tb97 .tb-pop { position:absolute; z-index:66; display:flex; flex-wrap:wrap; align-items:center; gap:3px; max-width:min(340px, calc(100vw - 16px)); padding:5px; background:#fff; border:1px solid #9aa3ad; border-radius:4px; box-shadow:2px 3px 8px rgba(0,0,0,.28); }
+#toolbar.tb97 .tb-pop.hidden { display:none !important; }
+#toolbar.tb97 .tb-pop > .t-sep:first-child { display:none; }
+#toolbar.tb97 .tb-cpop { width:178px; }
+#toolbar.tb97 .tb-cpop .sw { width:22px; height:22px; border:1px solid #9aa3ad; border-radius:3px; padding:0; cursor:pointer; }
+#toolbar.tb97 .tb-cpop .sw:hover { outline:2px solid #2f6fd6; outline-offset:0; }
+#toolbar.tb97 .t-sel { height:24px; }
+@media (pointer:coarse){ #toolbar.tb97 .t-btn{ min-width:30px; height:30px; } #toolbar.tb97 .t-sel{ height:30px; } }
+#m-help .help-keys { width:100%; border-collapse:collapse; font-size:12.5px; }
+#m-help .help-keys th { text-align:left; padding:8px 4px 3px; color:#2f6fd6; border-bottom:1px solid #d5dae0; }
+#m-help .help-keys td { padding:2px 4px; }
+#m-help .help-keys td + td { text-align:right; color:#555; white-space:nowrap; }
+#m-help .dlg-b { overflow-y:auto; }
+/* 표 계산식 순환(wp-table.js): 칸 값은 비우고 표시만 — 저장·호스트에는 안 나감 */
+#page td[data-fcycle]::after, #page th[data-fcycle]::after { content:"#순환"; color:#c00000; font-size:.9em; }

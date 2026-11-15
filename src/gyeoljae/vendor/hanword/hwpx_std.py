@@ -7,7 +7,7 @@
 import io, os, re, zipfile, base64, html as htmlmod
 import xml.etree.ElementTree as ET
 import pyexpat
-from hwpxconv import ListHTML, MAX_LIST_LEVEL, zip_put   # 목록 수준 공용(hwpxconv 최상위는 표준 라이브러리만)
+from hwpxconv import ListHTML, MAX_LIST_LEVEL, zip_put, outer   # 목록 수준 공용(hwpxconv 최상위는 표준 라이브러리만)
 
 APP = os.path.dirname(os.path.abspath(__file__))
 SKELETON = os.path.join(APP, "hwpx_skeleton.hwpx")
@@ -248,9 +248,10 @@ class _Writer:
                                % (fid, _x(link), fid, _link_params(link)))
             if r.get("endnote") is not None:
                 txt = (notes or {}).get(r["endnote"], "")
-                out.append('<hp:run charPrIDRef="0"><hp:ctrl><hp:endNote number="0" suffixChar="41" instId="%d"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" '
+                nt = getattr(self, "note_tag", "endNote")   # footNote/endNote 같은 구조(NoteType)
+                out.append(('<hp:run charPrIDRef="0"><hp:ctrl><hp:@NOTE@ number="0" suffixChar="41" instId="%d"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" '
                            'linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0"><hp:p id="%d" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">'
-                           '<hp:run charPrIDRef="0"><hp:t>%s</hp:t></hp:run></hp:p></hp:subList></hp:endNote></hp:ctrl></hp:run>' % (self.nid(), self.nid(), _x(txt)))
+                           '<hp:run charPrIDRef="0"><hp:t>%s</hp:t></hp:run></hp:p></hp:subList></hp:@NOTE@></hp:ctrl></hp:run>').replace("@NOTE@", nt) % (self.nid(), self.nid(), _x(txt)))
                 continue
             if r.get("img"):
                 p = self.pic(r["img"], r.get("width"))
@@ -348,6 +349,8 @@ class _Writer:
         return "".join(o)
 
     def build(self, blocks, meta, notes, page=None):
+        # #25 B안(2026-11-15): wpmeta data-notes="foot" = 한글 내보내기만 각주(hp:footNote, 쪽 아래). 편집기 모델은 미주 그대로
+        self.note_tag = "footNote" if (meta or {}).get("notes") == "foot" else "endNote"
         body = []; first_inner = None; pg = False
         ctrls = self.hf_ctrls(meta)
         for b in blocks:
@@ -496,7 +499,7 @@ class _Reader:
                 elif n == "subscript": d["sub"] = True
                 elif n == "fontRef": d["font"] = self.fonts.get(ch.get("hangul"))
             self.cp[c.get("id")] = d
-        for p in self.hdr.iter(HH + "paraPr"):
+        for p in outer(self.hdr, lambda e: e.tag == HH + "paraPr"):   # 바깥 것만(중첩 = 하위 트리 반복 훑기 2차 시간)
             d = {}
             for ch in p.iter():
                 n = _ln(ch)
@@ -506,7 +509,7 @@ class _Reader:
                     try: d["left"] = int(ch.get("value") or 0)
                     except ValueError: pass
             self.pp[p.get("id")] = d
-        for b in self.hdr.iter(HH + "borderFill"):
+        for b in outer(self.hdr, lambda e: e.tag == HH + "borderFill"):
             ent = {}
             for ch in b.iter():
                 n = _ln(ch)

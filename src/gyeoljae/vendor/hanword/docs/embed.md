@@ -96,6 +96,10 @@ inert document (DOMParser) and only allowed nodes are copied into the editor, so
   Hangul (no spaces, brackets, quotes, `:`). They are names, not expressions: **the host must never
   evaluate them** (no `eval`/`new Function`); look names up in its own table. They survive editing,
   table split and `get` (an empty `<span data-field>` is kept too).
+- **data-formula** (td/th only): the editor's own table formula, exactly `SUM|AVG(ABOVE|BELOW|LEFT|RIGHT|A1|A1:B3)`
+  (columns A–ZZ, rows 1–9999; anything else is dropped). The editor parses this fixed grammar itself (no `eval`),
+  recomputes on edit and on `load` (not in read-only mode), and stores the computed value as the cell text, so
+  `get`, HWPX and PDF carry plain values. `data-sum` stays a host name tag: the editor never computes it.
 - class tokens: pgbreak, objline, wp-hr, caption. style: an allowlist of text, colour, spacing, border,
   size and page-break properties; values with `url(`, `expression`, `\`, `@`, `<`, comments etc. are
   dropped. `display`, `position`, `float`, `opacity` are not allowed.

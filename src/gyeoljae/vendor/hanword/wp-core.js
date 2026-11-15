@@ -236,7 +236,7 @@
       ["모두 선택","Ctrl+A","selectall"], ["찾기","Ctrl+F","find"], ["찾아 바꾸기","Ctrl+H","replace"] ]},
     { name:"보기", items:[ ["전체보기 (쪽 맞춤)","","fullview"], ["전체 화면 전환","","fullscreen"], ["쪽 윤곽","","outline"], ["쪽 경계","","pageguide"] ]},
     { name:"입력", items:[
-      ["표","Ctrl+N,T","table"], ["그림","Ctrl+N,I","image"], ["미디어 삽입(영상·소리)","","media"], ["특수 문자…","Ctrl+F10","symbol"], "-",
+      ["표","Ctrl+N,T","table"], ["표 계산식…","","formula"], ["그림","Ctrl+N,I","image"], ["미디어 삽입(영상·소리)","","media"], ["특수 문자…","Ctrl+F10","symbol"], "-",
       ["캡션 달기","","caption"], ["캡션 번호 갱신","","captionRenum"],
       ["하이퍼링크…","Ctrl+K","link"], ["가로줄","","hr"], ["쪽 나누기","Ctrl+Enter","pagebreak"], ["목록 속성…","","listDlg"] ]},   // 쪽 나누기 입력메뉴 추가(감독 지시 07-17, 쪽 메뉴에도 유지=양쪽 접근)
     { name:"서식", items:[
@@ -251,7 +251,7 @@
       ["선택 그림을 쪽 배경으로 (계획중)","","objToBg"], "-",
       ["목차 생성(현재 쪽 기준)","","tocGen"], "-",
       ["미주 삽입","","fnInsert"], ["미주 번호 갱신","","fnRenum"] ]},   // 목차 생성=1회 스냅샷(편집가능 텍스트, 2026-07-20). 옛 자동갱신 목차는 폐지
-    { name:"도구", items:[ ["맞춤법 검사","F8","spell"], ["글자 수","","wordcount"], "-", ["편집 역사 암호 설정/변경","","histpw"], "-", ["버그 신고 / 게시판","","board"] ]},
+    { name:"도구", items:[ ["맞춤법 검사","F8","spell"], ["문서 통계 (글자 수)…","","wordcount"], "-", ["편집 역사 암호 설정/변경","","histpw"], "-", ["버그 신고 / 게시판","","board"] ]},
   ];
   if (EMBED) {   // 임베드: 서버 저장소·외부 게시판·역사 암호(서버 .hist)·미디어(IDB/서버 폴더) 메뉴 제거
     var EMBED_DROP = { media:1, histpw:1, board:1, objToBg:1, header:1, pagenum:1 };   // 머리말/꼬리말·쪽번호 = 호스트(결재 서버)가 직접 인쇄
@@ -285,7 +285,7 @@
     // 쪽
     "ctrl+Enter":"pagebreak","ctrl+j":"pagebreak","f7":"pageDlg",
     // 입력·도구
-    "ctrl+f10":"symbol","f8":"spell","ctrl+k":"link",
+    "ctrl+f10":"symbol","f8":"spell","ctrl+k":"link","f1":"help",   // F1 = 도움말(단축키 목록, wp-toolbar.js)
     // 이동·선택
     "alt+Home":"paraHome","alt+End":"paraEnd","f3":"blockCycle",
   };
@@ -297,6 +297,10 @@
 
   // ── 메뉴 막대 (키보드/게임패드: F10→포커스, ←→ 이동, Enter/↓ 열기 — HEAD fd4b780 복원) ──
   menubar.setAttribute("role", "menubar");
+  var BASE_MENUS = MENUS;   // 모드(공개·임베드) 정리까지 끝난 기존 메뉴 — 도구 모음 모양(wp-toolbar.js)이 이걸로 한글97식 메뉴를 짠다
+  function buildMenubar(list) {   // 메뉴 막대 다시 그리기(도구 모음 모양 전환). 항목 배열 형식은 MENUS 와 같음
+  if (openIdx >= 0) closeDropdown();
+  MENUS = list; menubar.innerHTML = "";
   MENUS.forEach(function (m, i) {
     var el = document.createElement("div"); el.className = "mb";
     el.innerHTML = '<span class="acc">' + m.name.charAt(0) + '</span>' + m.name.slice(1);
@@ -314,7 +318,9 @@
     });
     menubar.appendChild(el); m._el = el;
   });
+  }
   var openIdx = -1;
+  buildMenubar(MENUS);
   function toggleMenu(i, el) {
     if (openIdx === i) { closeDropdown(); return; }
     openIdx = i;
@@ -700,6 +706,7 @@
     var c = page.cloneNode(true);
     c.querySelectorAll("button,input,select,textarea,script,style").forEach(function (el) { if (el.id !== "wpmeta") el.parentNode && el.parentNode.removeChild(el); });   // UI 요소는 저장/출력에서 제외
     c.querySelectorAll("[data-pgfill]").forEach(function (s) { s.parentNode.removeChild(s); });
+    c.querySelectorAll("[data-fcycle]").forEach(function (x) { x.removeAttribute("data-fcycle"); });   // 표 계산 순환 표시(화면 전용 — 저장 칸은 빈 값)
     c.querySelectorAll(".pgbreak").forEach(function (b) { b.style.height = ""; if (!b.getAttribute("style")) b.removeAttribute("style"); });
     // 선택 표시(셀 블록/개체 선택/리사이즈)는 화면 전용 — 저장·undo 본문에 남기지 않음
     c.querySelectorAll(".cb-sel,.obj-sel,.resizing").forEach(function (x) {
@@ -905,7 +912,7 @@
     if (chord) {
       e.preventDefault(); clearTimeout(chordTimer); var pre = chord; chord = null;
       var k = e.key.toLowerCase();
-      if (pre === "n") { if (k === "t") dispatch("table"); else if (k === "i") dispatch("image"); else if (!EMBED && k === "h") dispatch("header"); else if (!EMBED && k === "p") dispatch("pagenum"); }
+      if (pre === "n") { if (k === "t") dispatch("table"); else if (k === "i") dispatch("image"); else if (!EMBED && k === "h") dispatch("header"); else if (!EMBED && k === "p") dispatch("pagenum"); else if (k === "e") dispatch("fnInsert"); }   // Ctrl+N,E = 미주(한글 관례)
       else if (pre === "m") { if (k === "k") dispatch("colorBlack"); else if (k === "r") dispatch("colorRed"); else if (k === "b") dispatch("colorBlue"); }
       return;
     }
@@ -918,7 +925,7 @@
       markDirty(); return;
     }
     var combo = comboStr(e);
-    if (combo === "ctrl+n") { e.preventDefault(); chord = "n"; toastMsg(EMBED ? "표 T · 그림 I" : "표 T · 그림 I · 머리말 H · 쪽번호 P"); chordTimer = setTimeout(function () { chord = null; }, 2000); return; }
+    if (combo === "ctrl+n") { e.preventDefault(); chord = "n"; toastMsg(EMBED ? "표 T · 그림 I · 미주 E" : "표 T · 그림 I · 머리말 H · 쪽번호 P · 미주 E"); chordTimer = setTimeout(function () { chord = null; }, 2000); return; }
     if (combo === "ctrl+m") { e.preventDefault(); chord = "m"; toastMsg("글자색 — 검정 K · 빨강 R · 파랑 B"); chordTimer = setTimeout(function () { chord = null; }, 2000); return; }
     if (combo === "f5" || combo === "f7" || combo === "f8") {   // 표 안: 표 모듈이 F5(셀블록)·F7(칸)·F8(줄) 처리 → 편집용지(F7)/맞춤법(F8) 양보
       var an = window.getSelection().anchorNode, en = an && an.nodeType === 3 ? an.parentNode : an;
@@ -927,12 +934,29 @@
     var act = HOT[combo]; if (act) { e.preventDefault(); dispatch(act); }
   });
 
+  // ── #9 잔여: 드래그 pointermove rAF 합치기 + 핸들 추적(2026-11-15) ──
+  //   pointermove를 프레임당 1회(마지막 이벤트)로 합쳐 적용 — 게임패드 커서·고주파 터치에서 강제 리플로우 반복 방지.
+  //   rAF 핸들을 추적해 end()=대기 중인 마지막 이동을 즉시 반영 후 해제(놓는 순간 위치 유실 없음), cancel()=버림.
+  //   pointercancel(터치 중단·OS 제스처)도 end()와 같은 경로 → 드래그 상태가 남지 않음. _rafLive=살아 있는 핸들 수(e2e 누수 검사).
+  var _rafLive = 0;
+  function rafDrag(apply) {
+    var h = 0, last = null;
+    function run() { h = 0; _rafLive--; var ev = last; last = null; if (ev) apply(ev); }
+    return {
+      push: function (ev) { last = ev; if (!h) { h = requestAnimationFrame(run); _rafLive++; } },
+      flush: function () { if (h) { cancelAnimationFrame(h); run(); } },
+      cancel: function () { if (h) { cancelAnimationFrame(h); h = 0; _rafLive--; } last = null; }
+    };
+  }
+
   // ── 공유 네임스페이스(모듈·디버그 브리지) ──
   window.WP = {
+    rafDrag: rafDrag, rafLive: function () { return _rafLive; },
     page: page, docname: docname, embed: EMBED,
     $: $, exec: exec, dispatch: dispatch, ACT: ACT,
     register: function (o) { for (var k in o) ACT[k] = o[k]; },
     HOT: HOT,   // 단축키 테이블(디버그/전수 점검용)
+    baseMenus: function () { return BASE_MENUS; }, menus: function () { return MENUS; }, setMenus: buildMenubar,   // 도구 모음 모양 전환(wp-toolbar.js)
     openModal: openModal, closeModal: closeModal,
     toast: toastMsg, status: status, markDirty: markDirty, clean: function () { dirty = false; },
     PAGEBG_IMG: true,   // 쪽 배경그림 활성(2026-07-18 사용자 지시 — HWPX로는 미반출, 편집기/HTML 전용)

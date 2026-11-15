@@ -125,6 +125,16 @@ e-approval-kr -u admin2 change approve &lt;번호&gt; --password-file pw.txt   #
 e-approval-kr -u admin smtp test 받는사람@example.com   # 시험 메일 1통
 e-approval-kr -u admin mail flush      # 대기열 즉시 발송(웹 서버는 30초마다 자동 발송)</code></pre>
 <code>--allow-external-mail on</code>이면 사내 메일에서 외부 주소로 보내기도 허용됩니다(시간당 한도: <code>--rate-per-hour</code>, <code>--user-external-per-hour</code>).</div>
+<h2 id="onlyoffice">9-1. OnlyOffice 문서 편집 (선택)</h2>
+<p>기본은 <b>꺼짐</b>입니다. 따로 운영하는 OnlyOffice Document Server 를 연결하면 첨부와 자료실의 docx·xlsx·pptx 를 브라우저에서 <b>보기·편집</b>할 수 있습니다(사용자 PC 에 오피스 프로그램이 없어도 됨). 편집 결과는 창을 닫거나 저장(Ctrl+S)하면 새 판으로 저장되고, 감사로그에 편집한 사람 이름으로 남습니다.</p>
+<ol><li>문서 서버를 JWT 를 켜고(<code>JWT_ENABLED=true</code>, <code>JWT_SECRET</code>) 운영합니다.</li>
+<li><b>관리 → OnlyOffice</b>에서 문서 서버 주소(브라우저가 여는 주소), 결재 서버 내부 주소(문서 서버가 결재 서버에 닿는 주소), 필요하면 문서 서버 내부 주소, JWT 비밀(문서 서버와 같은 값, 32자 이상)을 넣고 사용을 켭니다.</li></ol>
+<ul><li>편집은 새 판을 올릴 수 있는 사람만 됩니다: 첨부는 기안자가 기안중·회수·반려 문서에서만, 자료실은 쓰기 권한이 있는 사람이 최신 판에서만. 진행·완료 문서의 첨부와 옛 판은 <b>보기만</b> 됩니다.</li>
+<li>문서 서버는 결재 서버가 서명한 짧은 주소로만 파일을 받고, 편집 결과는 설정한 문서 서버 주소에서만 받습니다.</li></ul>
+<div class="warn"><b>주의</b>JWT 비밀은 데이터 폴더의 <code>onlyoffice.json</code>에 저장됩니다. 문서 서버는 사내망에만 두고, 다른 서비스와 같은 JWT 비밀을 함께 쓰지 않는 것이 좋습니다.</div>
+<div class="adm"><b>관리자용</b><pre><code>cat 비밀파일 | e-approval-kr -u admin onlyoffice set --docs-url https://docs.example.com \
+   --app-internal-url http://gyeoljae.internal:8130 --jwt-secret-stdin --enabled on
+e-approval-kr -u admin onlyoffice show</code></pre></div>
 <h2 id="audit">10. 감사로그와 검증</h2>
 <p><b>관리 → 감사로그</b>에는 모든 상태 변경(상신·승인·반려·권한 변경 등)이 해시 체인으로 기록됩니다. 완료된 문서는 내용 해시도 남아, 몰래 고치면 검증에서 드러납니다.</p>
 <ul><li>정기적으로(예: 월 1회) 검증을 실행하세요.</li>

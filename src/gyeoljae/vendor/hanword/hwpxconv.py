@@ -3,7 +3,7 @@
 #   export: stdin=에디터 HTML → stdout=.hwpx 바이트
 #   import: stdin=.hwpx 바이트 → stdout=HTML
 # RG DS 한워드(wp)가 ssh로 호출. 한글이 여는 정식 HWPX를 검증된 라이브러리로 생성.
-import sys, io, re, os, html as htmlmod, subprocess, tempfile, base64, shutil, zipfile, zlib
+import sys, io, re, os, html as htmlmod, subprocess, tempfile, base64, shutil, zipfile, zlib, threading
 from html.parser import HTMLParser
 from hanword_htmlparse import EofSafeParser
 try:
@@ -17,6 +17,18 @@ def _safe_link_url(u):   # 왕복 공통 스킴 화이트리스트(에디터 nor
     if not u: return None
     low=re.sub(r"[\s\x00-\x1f]+","",u).lower()
     return u if re.match(r"^(https?:|mailto:|tel:)", low) else None
+
+def walk(root, stop):
+    """root 이하 요소를 문서 순서로 내보내되 stop(e)가 참인 요소의 자손으로는 내려가지 않음(그 요소 자체는 내보냄). 선형.
+       비신뢰 문서의 같은 요소 중첩(머리말 안 머리말…)마다 하위 트리를 다시 훑는 O(n²) 차단(감사 0.1.10)."""
+    st = [root]
+    while st:
+        e = st.pop(); yield e
+        if not stop(e): st.extend(reversed(list(e)))
+
+def outer(root, match):
+    """match 요소 중 가장 바깥 것만(같은 요소 안에 중첩된 것은 건너뜀). 각자의 하위 트리는 서로 겹치지 않음 = 전체 선형."""
+    return (e for e in walk(root, match) if match(e))
 
 def _hancom_unesc(s):   # 한컴 필드 Command 값: '\\x'=문자 x 그대로, 이스케이프 안 된 첫 ';'에서 끝(뒤 ';1;0;0;' 등 옵션 꼬리 제거). 선형
     out=[]; i=0; n=len(s)
@@ -641,7 +653,9 @@ def _addruns(para, runs, hsize=None, doc=None, notes=None):
         link=lk
     for r in runs:
         if r.get("endnote") is not None and doc is not None:   # #25 미주 마커: run 사이에 앵커 삽입 → 인라인 위치 보존
-            try: doc.add_endnote((notes or {}).get(r["endnote"], ""), paragraph=para)
+            try:
+                if getattr(_NOTE_KIND, "foot", False): doc.add_footnote((notes or {}).get(r["endnote"], ""), paragraph=para)   # B안: 각주로
+                else: doc.add_endnote((notes or {}).get(r["endnote"], ""), paragraph=para)
             except Exception: pass
             continue
         if r.get("img") and doc is not None:   # 인라인 글자처럼 그림/도형(2026-07-18): run 순서대로 add_picture → 위치 보존
@@ -992,7 +1006,8 @@ def _extract_meta(html):   # 숨김 <div id="wpmeta" data-header/footer/pagenum>
     meta={"header":ga("header"),"footer":ga("footer"),"pagenum":ga("pagenum"),
           "pagenum_format":ga("pagenum-format"),"pagenum_start":ga("pagenum-start"),
           "header_odd":ga("header-odd"),"header_even":ga("header-even"),
-          "paper":ga("paper"),"orient":ga("orient"),"margins":ga("margins")}
+          "paper":ga("paper"),"orient":ga("orient"),"margins":ga("margins"),
+          "notes":("foot" if ga("notes")=="foot" else "")}   # #25 B안: 한글 내보내기 주석 종류(foot=각주, 없음=미주)
     return meta, html[:i]+html[end:]
 
 # ── 용지 메타(wpmeta data-paper/orient/margins) — 문서와 함께 왕복(2026-11-13). 에디터 PAPERS(wp-format.js)와 동기 ──
@@ -1081,10 +1096,15 @@ def html_to_hwpx(html, page=None):   # 호출형(서버 in-process): HTML→.hwp
     except Exception as e:
         raise HwpxInputError("hwpx 생성 실패(%s)"%type(e).__name__)   # 원격 폴백까지 번지지 않게
 
+_NOTE_KIND=threading.local()   # #25 B안: python-hwpx 폴백 경로의 주석 종류(스레드별 — 서버 동시 변환)
+
 def _html_to_hwpx_pyhwpx(html):
     meta, html=_extract_meta(html)
-    notes, html=_extract_fnotes(html)   # #25 미주: 섹션은 본문 출력에서 제외, 내용은 hp:endNote로
-    doc=build(html, notes); _apply_meta(doc, meta)
+    notes, html=_extract_fnotes(html)   # #25 미주: 섹션은 본문 출력에서 제외, 내용은 hp:endNote로(B안 각주=hp:footNote)
+    _NOTE_KIND.foot=(meta.get("notes")=="foot")
+    try: doc=build(html, notes)
+    finally: _NOTE_KIND.foot=False
+    _apply_meta(doc, meta)
     buf=io.BytesIO()
     try: doc.save_to_stream(buf, validate=False)
     except TypeError: doc.save_to_stream(buf)
@@ -1119,7 +1139,7 @@ def _runs_to_html(doc, runs, heading=False, fncol=None):   # run 목록→inner 
             try:
                 el=getattr(run,"element",None)
                 for en in (el.iter() if el is not None else ()):
-                    if isinstance(en.tag,str) and en.tag.endswith('}endNote'):
+                    if isinstance(en.tag,str) and (en.tag.endswith('}endNote') or en.tag.endswith('}footNote')):
                         fncol["n"]+=1
                         txt="".join(t2.text or "" for t2 in en.iter() if isinstance(t2.tag,str) and t2.tag.endswith('}t'))
                         fncol["notes"].append(txt)
@@ -1633,10 +1653,12 @@ def _hwpx_meta_html(data):
     def ln(e): return e.tag.rsplit("}",1)[-1] if isinstance(e.tag,str) else ""
     def txt(e): return "".join((t.text or "") for t in e.iter() if ln(t)=="t").strip()
     attrs={}; footer=None; pn=None; ppr=None
+    seen=set()   # 이미 글자를 모은 머리말 하위 요소 — 중첩 머리말마다 하위 트리를 다시 훑는 2차 시간 차단(감사 0.1.10)
     for e in sec.iter():
         n=ln(e)
         if n=="pagePr" and ppr is None: ppr=e
-        elif n=="header":
+        elif n=="header" and id(e) not in seen:
+            seen.update(id(x) for x in e.iter())
             t=txt(e)
             if t: attrs.setdefault({"ODD":"header-odd","EVEN":"header-even"}.get(e.get("applyPageType"),"header"), t)
         elif n=="footer" and footer is None:
@@ -1666,6 +1688,12 @@ def _hwpx_meta_html(data):
             m=[u(mg.get(k) or 0) for k in ("top","right","bottom","left")] if mg is not None else [20]*4
             attrs.update(_page_meta_attrs(w,h,*m))
         except (TypeError,ValueError): pass
+    try:   # #25 B안: 주석이 전부 각주(hp:footNote)면 data-notes="foot" → 편집기에선 미주 모델로 열고, 다시 내보내면 각주 유지
+        fn=en=0
+        for n in secs:
+            raw=z.read(n); fn+=len(re.findall(rb"<(?:[A-Za-z0-9_]+:)?footNote[\s>/]", raw)); en+=len(re.findall(rb"<(?:[A-Za-z0-9_]+:)?endNote[\s>/]", raw))
+        if fn and not en: attrs["notes"]="foot"
+    except Exception: pass
     if not attrs: return ""
     return '<div id="wpmeta" hidden=""%s></div>'%"".join(' data-%s="%s"'%(k,esc(v[:2000])) for k,v in attrs.items())
 

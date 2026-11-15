@@ -98,8 +98,10 @@ def doc_head(m):
 def doc_view(h, app, user, m, err="", comment=""):
     did = m["id"]
     cc = ", ".join(f"{esc(x)}{' ✓열람' if x in m['reads'] else ''}" for x in m["cc"]) or "-"
+    from .web_oo import oo_buttons
     atts = "".join(f"<li>📎 <a href='/doc/{did}/file/{a['idx']}'>{esc(a['name'])}</a> "
-                   f"<span class=mut>{a['size']:,} bytes</span></li>" for a in m["attachments"])
+                   f"<span class=mut>{a['size']:,} bytes</span>{oo_buttons(app, user, 'd', did, a['idx'], a['name'])}</li>"
+                   for a in m["attachments"])
     hist = "".join(f"<li><span class=mut>{esc(x['at'][5:16])}</span> {esc(x['actor'])} {esc(x['action'])}"
                    f"{' “' + esc(x.get('comment')) + '”' if x.get('comment') else ''}</li>" for x in m["history"])
     c = h.csrf()

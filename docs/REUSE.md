@@ -2,6 +2,18 @@
 
 새 기능·시험 도구를 들이기 전에 이미 있는 것을 먼저 찾고, 쓴 것을 여기 적는다.
 
+## 0.2.6 — OnlyOffice 연동 (`onlyoffice.py`, `web_oo.py`, docs/ONLYOFFICE.md)
+
+- **찾은 것**: 자산 DB(코드·컴포넌트·의미 검색)에 OnlyOffice 연동·콜백 코드는 없음. JWT 는 다른 웹 프로젝트(Node)의
+  `sign/verify`(HMAC-SHA256, base64url, `timingSafeEqual`, `exp`·`typ` 검사)뿐 — Python 라이브러리는 없음.
+  저장소 안: 자료실 판 관리(`files_new_version`), 첨부 저장(`_store_attachments`), 비밀 보관(`smtp.json` 0600·가림표),
+  CSP 표(`web.CSP`), 감사(`_audit`), 브라우저 E2E(`test_browser_e2e._launch`).
+- **쓴 것**: 그 Node 토큰의 모양(서명→만료→토큰 종류 `t` 검사, 상수 시간 비교)을 표준 라이브러리 `hmac`/`hashlib`
+  로 옮겨 JWT HS256 을 직접 구현(alg 는 HS256 만). 저장은 기존 `files_new_version`(같은 내용이면 건너뛰는
+  `if_changed` 만 추가)과, 첨부용 `attachment_replace`(`_editable` 권한·잠금 재사용). 설정 파일은 `smtp.json` 과 같은
+  방식(`onlyoffice.json`, `_atomic_write`+`_try_chmod 0600`, 비밀 가림). 실서버 시험은 `test_browser_e2e._launch`
+  (브라우저 찾기) 재사용. 새 pip 의존 없음.
+
 ## 0.2.4 — 브라우저 종단간 시험 (`tests/test_browser_e2e.py`)
 
 - **찾은 것**: 개발 기계에 이미 있던 Python Playwright 패키지와 Playwright 가 받아 둔 Chromium(브라우저 캐시),

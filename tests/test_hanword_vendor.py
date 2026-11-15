@@ -91,6 +91,69 @@ class VendorTest(unittest.TestCase):
                             "url(", "<style"):
                     self.assertNotIn(bad, out)
 
+    def test_formula_parity_with_hanword(self):  # 0.1.10 표 계산식: 두 정화기가 같은 문법·같은 태그만 남김
+        from gyeoljae import sanitize
+        e = hanword.embed()
+        self.assertEqual(sanitize.FORMULA_RE.pattern, e.FORMULA_VAL.pattern)
+        cases = ["SUM(ABOVE)", "AVG(LEFT)", "SUM(BELOW)", "AVG(RIGHT)", "SUM(A1)", "SUM(A1:B3)", "AVG(ZZ9999:A1)",
+                 "SUM(A0)", "SUM(AAA1)", "SUM(A10000)", "sum(above)", "SUM(ABOVE)+1", " SUM(ABOVE)", "SUM(ABOVE) ",
+                 "MAX(A1)", "SUM(A1,B2)", "SUM()", "", "SUM(A1:B3", "eval(1)", "SUM(A1:B3)\n", "ＳＵＭ(ABOVE)"]
+        for tag in ("td", "th", "tr", "table", "span", "p"):
+            for v in cases:
+                with self.subTest(tag=tag, v=v):
+                    h = f'<table><tr><{tag} data-formula="{v}">7</{tag}></tr></table>' if tag in ("td", "th") \
+                        else f'<{tag} data-formula="{v}">7</{tag}>'
+                    san = e.sanitize_html(h)
+                    self.assertEqual(clean_html(san), san)  # 두 번째 통과가 hanword 출력을 바꾸지 않음
+                    ours = clean_html(h)
+                    want = tag in ("td", "th") and re.fullmatch(e.FORMULA_VAL, v) is not None
+                    self.assertEqual('data-formula=' in san, want)
+                    self.assertEqual('data-formula=' in ours, want)
+        # 첫 속성만(브라우저와 같음): 뒤의 유효한 식이 앞의 틀린 식을 대신하지 않음
+        for h in ('<table><tr><td data-formula="x" data-formula="SUM(ABOVE)">1</td></tr></table>',
+                  '<table><tr><td DATA-FORMULA="SUM(LEFT)" data-formula="SUM(ABOVE)">1</td></tr></table>'):
+            out = hanword.canonical_html(h)
+            self.assertLessEqual(out.count("data-formula"), 1)
+            self.assertNotIn("SUM(ABOVE)", out)
+
+    def test_formula_survives_store_and_export(self):  # 저장·서식 추출·변환에서 식 유지, 값은 칸 글자 그대로(서버는 계산 안 함)
+        from gyeoljae import doctemplate
+        h = ('<div class="objline" data-place="char"><table><tbody><tr><td>1</td><td>2</td></tr>'
+             '<tr><td data-formula="SUM(ABOVE)">999</td><th data-formula="AVG(A1:B1)" data-field="x">1.5</th></tr>'
+             '</tbody></table></div>')
+        out = hanword.canonical_html(h)
+        self.assertIn('<td data-formula="SUM(ABOVE)">999</td>', out)  # 999 = 편집기가 적은 값, 서버가 고치지 않음
+        self.assertIn('data-formula="AVG(A1:B1)"', out)
+        self.assertEqual(hanword.canonical_html(out), out)
+        self.assertIn('data-formula="SUM(ABOVE)"', doctemplate.fill(None, out, {}))
+        fd = {"fields": [{"key": "x", "label": "x", "type": "text"}]}
+        self.assertIn('data-formula="SUM(ABOVE)"', doctemplate.fill(fd, out, {"x": "v"}))
+        self.assertIn("999", zipfile.ZipFile(io.BytesIO(hanword.export(out, "hwpx")))
+                      .read("Contents/section0.xml").decode("utf-8"))
+        self.assertIn("999", zipfile.ZipFile(io.BytesIO(hanword.export(out, "docx"))).read("word/document.xml").decode())
+
+    def test_parser_parity_edges(self):  # 0.1.10 정화기 차이 수정: void 버림 요소·plaintext·head
+        for h, keep, gone in (('<meta charset="utf-8"><p>본문</p>', "본문", "meta"),
+                              ('<link rel=x><p>본문</p><base href=x>', "본문", "link"),
+                              ('<frame><p>본문</p>', "본문", "frame"),
+                              ('<p>앞</p><plaintext>숨김</plaintext><p>뒤</p>', "앞", "숨김")):
+            with self.subTest(h=h):
+                for out in (hanword.canonical_html(h), clean_html(h)):
+                    self.assertIn(keep, out)
+                    self.assertNotIn(gone, out)
+        self.assertNotIn("뒤", clean_html('<p>앞</p><plaintext>x</plaintext><p>뒤</p>'))
+
+    def test_notes_are_plain_content(self):  # 각주/미주(0.1.10 각주 내보내기): 임베드는 주석 표지를 버림 → 글로 남고 변환도 됨
+        h = ('<div id="wpmeta" data-notes="foot"></div><p>본문<sup><a class="fnref" href="#fn1" id="r1">1</a></sup></p>'
+             '<div class="fnotes"><p id="fn1">주석 내용</p></div>')
+        out = hanword.canonical_html(h)
+        self.assertNotIn("data-notes", out)
+        self.assertNotIn("fnotes", out)
+        self.assertIn("주석 내용", out)
+        x = zipfile.ZipFile(io.BytesIO(hanword.export(out, "hwpx"))).read("Contents/section0.xml").decode("utf-8")
+        self.assertIn("주석 내용", x)
+        self.assertNotRegex(x, r"<hp:(footNote|endNote)[ >]")  # 주석 개체 없음(footNotePr 등 구역 설정은 골격)
+
     def test_page_validation(self):
         self.assertEqual(hanword.parse_page("gov"), {"paper": "A4", "orient": "portrait", "mt": 30.0, "mr": 15.0,
                                                      "mb": 15.0, "ml": 20.0})

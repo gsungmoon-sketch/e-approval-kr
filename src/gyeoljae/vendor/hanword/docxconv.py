@@ -7,7 +7,7 @@ import io, re, zipfile, base64, posixpath, html as htmlmod
 import xml.etree.ElementTree as ET
 import pyexpat as _expat
 from hwpxconv import (P, _PP, ListHTML, MAX_LIST_LEVEL, cell_paras, _extract_meta, _extract_fnotes, _safe_link_url, HwpxInputError, check_zip_actual, zip_put,
-                      _imgsize, rgb2hex, _safecolor, _meta_page, _page_meta_attrs)
+                      _imgsize, rgb2hex, _safecolor, _meta_page, _page_meta_attrs, outer)
 
 class DocxInputError(HwpxInputError):
     """손상/악성 docx 입력(서버가 폴백 없이 즉시 거부)."""
@@ -471,12 +471,20 @@ def _xml(zf, name):
     return _safe_parse(raw, name)
 
 def _no_dtd(*a): raise DocxInputError("DTD/엔티티 선언 금지(XXE 차단)")
+def _is_p(e): return e.tag == W + "p"
+def _is_r(e): return e.tag == W + "r"
+
+MAX_XML = 64 * 1024 * 1024; MAX_ELEMS = 3000000   # XML 파트 하나 크기·요소 수 상한(ET 트리 메모리 DoS 차단 — 요소당 ~150B)
 
 def _safe_parse(raw, name=""):
     """DOCTYPE/ENTITY 선언 거부 후 파싱. ET(C 가속)는 expat 핸들러를 노출하지 않으므로 pyexpat로 먼저 한 번 훑는다
        (앞부분 바이트 검사는 주석 패딩·UTF-16으로 우회 가능 — 감사 2026-11-13)."""
-    pp = _expat.ParserCreate()
-    pp.StartDoctypeDeclHandler = _no_dtd; pp.EntityDeclHandler = _no_dtd
+    if len(raw) > MAX_XML: raise DocxInputError("XML 파트가 너무 큽니다: %s" % name)
+    pp = _expat.ParserCreate(); cnt = [0]
+    def st(*a):
+        cnt[0] += 1
+        if cnt[0] > MAX_ELEMS: raise DocxInputError("XML 요소가 너무 많습니다: %s" % name)
+    pp.StartDoctypeDeclHandler = _no_dtd; pp.EntityDeclHandler = _no_dtd; pp.StartElementHandler = st
     try: pp.Parse(raw, True)
     except _expat.ExpatError: raise DocxInputError("XML 손상: %s" % name)
     try: return ET.fromstring(raw)
@@ -558,7 +566,7 @@ class _DocxReader:
         if root is None: return out
         for n in root.findall(W + kind):
             if n.get(W + "type") in ("separator", "continuationSeparator", "continuationNotice"): continue
-            out[n.get(W + "id")] = " ".join("".join(t.text or "" for t in p.iter(W + "t")) for p in n.iter(W + "p")).strip()
+            out[n.get(W + "id")] = " ".join("".join(t.text or "" for t in p.iter(W + "t")) for p in outer(n, _is_p)).strip()
         return out
 
     def img_tag(self, im, style):   # 출력 data URI 총량·개수 상한(같은 그림 수천 번 참조 → 수 GB HTML 증폭 차단)
@@ -752,7 +760,7 @@ class _DocxReader:
                         if first_align is None: first_align = al or ""
                         ps.append((d["inner"].replace("\x00PGBREAK\x00", ""), al))
                     elif ch.tag == W + "tbl":   # 중첩 표 → 셀 텍스트로 평탄화
-                        ps.append((_esc(" ".join("".join(t.text or "" for t in p.iter(W + "t")) for p in ch.iter(W + "p")).strip()), None))
+                        ps.append((_esc(" ".join("".join(t.text or "" for t in p.iter(W + "t")) for p in outer(ch, _is_p)).strip()), None))
                 if first_align: cell["style"] += "text-align:%s;" % first_align
                 if len(ps) > 1:   # 셀 여러 문단 → <p> 각각(셀 정렬과 다른 문단만 정렬 명시)
                     cell["html"] = "".join("<p%s>%s</p>" % ((' style="text-align:%s;"' % (a or "left")) if (a or "") != (first_align or "") else "", h.strip() or "<br>")
@@ -817,9 +825,9 @@ class _DocxReader:
         has_page = any("PAGE" in (it.text or "").upper().split() for it in root.iter(W + "instrText")) or \
                    any("PAGE" in (f.get(W + "instr") or "").upper().split() for f in root.iter(W + "fldSimple"))
         lines = []
-        for p in root.iter(W + "p"):
+        for p in outer(root, _is_p):          # 바깥 문단·run만(중첩 시 하위 트리 반복 훑기 = 2차 시간)
             txt = []
-            for r in p.iter(W + "r"):
+            for r in outer(p, _is_r):
                 if r.find(W + "instrText") is not None: continue
                 txt.extend(t.text or "" for t in r.iter(W + "t"))
             s = "".join(txt).strip()

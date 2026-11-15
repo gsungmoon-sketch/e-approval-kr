@@ -219,10 +219,15 @@ class HomeMixin:
                                                        "dept": dept, "sha256": sha256(data)})
         return {"id": fid, "name": name, "version": ver}
 
-    def files_new_version(self, actor, fid, data: bytes, note=""):
-        """기존 자료에 새 판(이름·위치는 그대로, 확장자도 원래 것)."""
+    def files_new_version(self, actor, fid, data: bytes, note="", if_changed=False):
+        """기존 자료에 새 판(이름·위치는 그대로, 확장자도 원래 것). if_changed: 최신판과 같으면 판을 만들지 않음."""
         with self._ro() as c:
             f = self._lib_file(c, actor, fid, need_write=True)
+            if if_changed:
+                cur = c.execute("select sha256 from lib_versions where file_id=? and version=?",
+                                (f["id"], f["cur_version"])).fetchone()
+                if cur and cur["sha256"] == sha256(data):
+                    return {"id": f["id"], "name": f["name"], "version": f["cur_version"], "unchanged": True}
         if f["scope"] == "dept":
             with self._ro() as c:
                 if self._user(c, actor)["dept"] != f["dept"]:

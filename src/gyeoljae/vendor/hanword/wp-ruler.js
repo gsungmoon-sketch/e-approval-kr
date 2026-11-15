@@ -39,15 +39,19 @@
   }
   // 마커 드래그
   var drag = null;
-  marker.addEventListener("pointerdown", function (e) { e.preventDefault(); e.stopPropagation(); drag = { box: contentBox() }; marker.setPointerCapture(e.pointerId); });
-  marker.addEventListener("pointermove", function (e) {
-    if (!drag) return; e.preventDefault();
+  marker.addEventListener("pointerdown", function (e) { e.preventDefault(); e.stopPropagation(); drag = { box: contentBox() }; try { marker.setPointerCapture(e.pointerId); } catch (x) {} });
+  var mQ = WP.rafDrag(mMove);   // #9 잔여(2026-11-15): 들여쓰기 마커 드래그 rAF 합치기 + pointercancel
+  marker.addEventListener("pointermove", function (e) { if (!drag) return; e.preventDefault(); mQ.push(e); });
+  function mMove(e) {
+    if (!drag) return;
     var rr = ruler.getBoundingClientRect(), x = e.clientX - rr.left - drag.box.left;
     x = Math.max(0, Math.min(drag.box.width - 20, x));
     marker.style.left = (drag.box.left + x - 5) + "px";
     if (WP.setIndent) WP.setIndent(x / zoom);
-  });
-  marker.addEventListener("pointerup", function (e) { drag = null; try { marker.releasePointerCapture(e.pointerId); } catch (x) {} placeMarker(); });
+  }
+  function mEnd() { if (drag) mQ.flush(); else mQ.cancel(); drag = null; placeMarker(); }
+  marker.addEventListener("pointerup", function (e) { mEnd(); try { marker.releasePointerCapture(e.pointerId); } catch (x) {} });
+  marker.addEventListener("pointercancel", mEnd);
 
   // #23: rAF 스로틀 — 연속 캐럿 이동(드래그 선택·키 반복) 시 프레임당 1회만 gBCR 측정
   var selRaf = null;

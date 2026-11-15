@@ -78,7 +78,29 @@
       });
     })).then(function () { return div.innerHTML; });
   }
-  function exportHwpx() {
+  // #25 B안(2026-11-15): 미주가 있는 문서를 한글(HWPX)로 내보낼 때 주석 형식 선택(미주=문서 끝 / 각주=쪽 아래).
+  //   선택은 #wpmeta data-notes="foot"(미주=속성 없음)로 문서에 기억 → 서버 변환·다시 열기·재내보내기까지 유지. 편집 모델은 미주 그대로.
+  var _nkGo = null;
+  function noteKindAsk(go) {
+    if (!page.querySelector("sup.fn")) { go(); return; }   // 미주 없는 문서 = 묻지 않음
+    var foot = (page.querySelector("#wpmeta") || { getAttribute: function () { return ""; } }).getAttribute("data-notes") === "foot";
+    $("nk-foot").checked = foot; $("nk-end").checked = !foot;
+    _nkGo = go; openModal("m-notekind");
+  }
+  function noteKindGo() {
+    var go = _nkGo; _nkGo = null; closeModal($("m-notekind"));
+    var foot = $("nk-foot").checked, el = page.querySelector("#wpmeta"), was = !!(el && el.getAttribute("data-notes") === "foot");
+    if (foot !== was) {
+      el = wpmetaEl();
+      if (foot) el.setAttribute("data-notes", "foot"); else el.removeAttribute("data-notes");
+      markDirty();
+    }
+    status(foot ? "주석 → 각주(한글 파일)" : "주석 → 미주(한글 파일)");
+    if (go) go();
+  }
+  WP.noteKindAsk = noteKindAsk;
+  function exportHwpx() { noteKindAsk(exportHwpxNow); }
+  function exportHwpxNow() {
     var name = (docname.value || "제목 없음").trim() || "제목 없음";
     status("HWPX 변환 중…"); toastMsg("HWPX 변환 중…");
     rasterizeShapes().then(function (html) {
@@ -215,14 +237,22 @@
     var on = $("hf-oddeven").checked;
     document.querySelectorAll("#m-headfoot .hf-oe").forEach(function (r) { r.classList.toggle("hidden", !on); });
   }
-  function openHeadFoot() {
+  // #32 D1(2026-11-15): 두 메뉴(머리말/꼬리말·쪽 번호 매기기)는 같은 대화상자를 열되 각자 구역을 강조·포커스.
+  //   입력칸 자동포커스는 정밀 포인터(마우스)에서만 — 터치에선 강조만(가상 키보드 불쑥 방지, openModal 원칙 유지).
+  function openHeadFoot(sec) {
+    sec = sec === "pagenum" ? "pagenum" : "header";
     var m = readMeta();
     $("hf-header").value = m.header; $("hf-footer").value = m.footer; $("hf-pagenum").value = m.pagenum;
     $("hf-pnformat").value = m.pagenumFormat; $("hf-pnstart").value = m.pagenumStart;
     $("hf-oddeven").checked = !!(m.headerOdd || m.headerEven);
     $("hf-header-odd").value = m.headerOdd; $("hf-header-even").value = m.headerEven;
     toggleOddEven();
+    document.querySelectorAll("#m-headfoot .frow[data-sec]").forEach(function (r) { r.classList.toggle("sec-on", r.getAttribute("data-sec") === sec); });
     openModal("m-headfoot");
+    var first = $(sec === "pagenum" ? "hf-pagenum" : "hf-header");
+    var fine = window.matchMedia && window.matchMedia("(pointer:fine)").matches;
+    setTimeout(function () { try { first.scrollIntoView({ block: "nearest" }); if (fine) first.focus(); } catch (e) {} }, 20);   // openModal의 dlg.focus(0ms) 뒤
+    status(sec === "pagenum" ? "쪽 번호 설정" : "머리말/꼬리말 설정");
   }
   function headFootApply() {
     var el = wpmetaEl();
@@ -432,5 +462,5 @@
   WP.fmtPageNum = fmtPageNum; WP.headerFor = headerFor;   // #21 쪽번호 표기·홀짝 머리말(미리보기 공유)
   WP.wpmetaEl = wpmetaEl;   // #26 쪽 테두리 — 편집용지 대화상자(wp-format)가 wpmeta에 기록
   WP.importHwpx = importHwpx;   // #31 파일 자동열기(?open=)가 hwpx/hwp 열기에 재사용
-  WP.register({ pdf: pdf, exportHwpx: exportHwpx, openHwpx: openHwpx, image: image, header: openHeadFoot, pagenum: openHeadFoot, headFootApply: headFootApply });
+  WP.register({ pdf: pdf, exportHwpx: exportHwpx, noteKindGo: noteKindGo, openHwpx: openHwpx, image: image, header: function () { openHeadFoot("header"); }, pagenum: function () { openHeadFoot("pagenum"); }, headFootApply: headFootApply });
 })();
