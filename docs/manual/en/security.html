@@ -21,7 +21,9 @@
 <ul><li>Sign-in attempt limits (5 per account and 20 per IP within 10 minutes).</li>
 <li>Session cookies are HttpOnly and SameSite=Strict (Secure over HTTPS); every changing request is CSRF-checked.</li>
 <li>Attachments: only allowed extensions and sizes; files are stored under numbers only.</li>
-<li>Documents you may not see are answered as "does not exist".</li></ul>
+<li>Documents you may not see are answered as "does not exist".</li>
+<li>The document editor (hanword 0.1.9) is bundled with the program. Its program files are checked against a fixed list of SHA-256 checksums before they are loaded; a file that differs, an unknown extra file, or an unsafe cache folder makes the editor refuse to start instead of running altered code. Scripts are served only from the program itself.</li>
+<li>Body size limits are enforced on the server: 2 MB of text, 8 MB including photos.</li></ul>
 <p>If you find a vulnerability, please report it privately through GitHub Security Advisories instead of a public issue: <code>https://github.com/gsungmoon-sketch/e-approval-kr/security/advisories/new</code></p>
 
 <div class="pn"><a href="backup.html">&larr; Previous: 6. Backup, restore, upgrade</a><a href="troubleshooting.html">Next: 8. Troubleshooting and FAQ &rarr;</a></div><footer>e-approval-kr manual · MIT license · Screen labels may differ slightly between versions.</footer></div></body></html>

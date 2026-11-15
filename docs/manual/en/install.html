@@ -119,6 +119,7 @@ sudo ./install.sh --lan    # reachable from the office network (0.0.0.0)</code><
 # Windows: py e-approval-kr-&lt;version&gt;.pyz serve
 python3 e-approval-kr-&lt;version&gt;.pyz setup      # create the first admin in the terminal</code></pre></div>
 <p>Choose the data folder with the <code>GYEOLJAE_DATA</code> environment variable or <code>--data FOLDER</code>. Otherwise a per-user folder is used (Windows <code>%LOCALAPPDATA%\gyeoljae</code>, macOS <code>~/Library/Application Support/gyeoljae</code>, Linux <code>~/.local/share/gyeoljae</code>). Closing the terminal window stops the server.</p>
+<p>The single <code>.pyz</code> file is self-contained: it also serves the document editor, its fonts and the web scripts, so nothing else needs to be installed or copied next to it.</p>
 
 <h2 id="docker">Docker</h2>
 <div class="adm"><b>For administrators</b>Build an image from the repository's <code>Dockerfile</code> and run it:<pre><code>docker build -t e-approval-kr .

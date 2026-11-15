@@ -176,6 +176,13 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
         c.audited = True
         return entry
 
+    def _audit_folders(self, c, actor, doc_id, added=(), removed=()):
+        """내 폴더 태그 변경 기록(바뀐 것만). 폴더 이름은 남기지 않는다 — 감사로그는 관리자가 읽고,
+        폴더 이름은 그 사용자만 보는 개인 정보다. 폴더 id 와 넣기/빼기만으로 '누가 언제 무엇을' 추적은 된다."""
+        added, removed = sorted(set(added)), sorted(set(removed))
+        if added or removed:
+            self._audit(c, actor, "folder_tag", int(doc_id), {"added": added, "removed": removed})
+
     def _file_last_seq(self):
         if not self.audit_path.exists():
             return 0
@@ -738,10 +745,13 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
                 self._check_class(c, u["dept"], 0 if dclass == "none" else dclass)
             self._set_tags_c(c, actor, did, cid, projects or [], initial=True)
             mine = {r["id"] for r in c.execute("select id from folders where owner=?", (actor,))}
+            put = []
             for fid in [int(x) for x in folders or [] if str(x).isdigit()]:
                 if fid not in mine:
                     raise NotFound("폴더 없음")
-                c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)", (fid, did, ts))
+                if c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
+                             (fid, did, ts)).rowcount:
+                    put.append(fid)
             dd = self._doc_dir(did)
             if dd.exists():  # 롤백된 이전 시도의 고아 디렉터리(같은 id 재사용) 정리
                 _rmtree(dd)
@@ -749,6 +759,7 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
             self._store_attachments(did, meta, attachments)
             self._hist(meta, actor, "draft")
             self._audit(c, actor, "draft", did, {"title": title})
+            self._audit_folders(c, actor, did, put)
             if src_meta is not None:
                 self._audit(c, actor, "draft_from", did, {"source": int(source_id), "source_number": src_meta.get("number"),
                                                           "attachments": bool(copy_attachments)})

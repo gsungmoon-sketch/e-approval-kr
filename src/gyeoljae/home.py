@@ -113,20 +113,24 @@ class HomeMixin:
         """폴더만 지운다(문서 자체는 그대로)."""
         with self._tx() as c:
             f = self._folder(c, actor, fid)
-            c.execute("delete from folder_docs where folder_id=?", (f["id"],))
+            n = c.execute("delete from folder_docs where folder_id=?", (f["id"],)).rowcount
+            if n:  # 문서 태그가 함께 풀린다 — 폴더 id·문서 수만(이름은 개인 정보, _audit_folders 참고)
+                self._audit(c, actor, "folder_delete", None, {"folder": f["id"], "docs": n})
             c.execute("delete from folders where id=?", (f["id"],))
 
     def folder_add(self, actor, fid, doc_id):
         with self._tx() as c:
             f = self._folder(c, actor, fid)
             self._check_view(c, actor, int(doc_id))  # 볼 수 있는 문서만 담기
-            c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
-                      (f["id"], int(doc_id), now_iso()))
+            if c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
+                         (f["id"], int(doc_id), now_iso())).rowcount:
+                self._audit_folders(c, actor, int(doc_id), [f["id"]])
 
     def folder_remove(self, actor, fid, doc_id):
         with self._tx() as c:
             f = self._folder(c, actor, fid)
-            c.execute("delete from folder_docs where folder_id=? and doc_id=?", (f["id"], int(doc_id)))
+            if c.execute("delete from folder_docs where folder_id=? and doc_id=?", (f["id"], int(doc_id))).rowcount:
+                self._audit_folders(c, actor, int(doc_id), [], [f["id"]])
 
     def folder_docs(self, actor, fid):
         with self._ro() as c:

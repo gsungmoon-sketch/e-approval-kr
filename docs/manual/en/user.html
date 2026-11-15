@@ -27,7 +27,9 @@
 <li><b>Fill in the form and body (step 3).</b> Each form has different fields. Fields marked as required must be filled.
 <ul><li><b>Amount and number:</b> type digits only. In a <b>table</b> such as expense items, type the amounts and the total yourself (nothing is calculated).</li>
 <li><b>Period (date range):</b> for leave, the number of working days is calculated without weekends; a half day counts as 0.5.</li>
-<li><b>Choice:</b> pick from the list.</li></ul>
+<li><b>Choice:</b> pick from the list.</li>
+<li><b>Photos in the body:</b> pictures pasted or inserted in the editor are <b>shrunk automatically</b> (longest side 1600 px, re-saved as JPEG; animated GIFs and files that would not get smaller are left as they are). A document body may hold <b>up to 2 MB of text and up to 8 MB including photos</b>. If it is too large, submit or save is refused with a message such as "The body is too large (up to 8 MB including photos). Reduce the number or size of photos." <b>The editor keeps everything you typed</b>; remove or shrink a photo and try again.</li>
+</ul>
 Values are kept as typed; the server does not calculate or check them. Amount-limit final approval does not apply to form documents; the approvers check the amount.</li>
 <li><b>Attach files (step 4)</b> such as receipts, quotes, hwpx / docx / pdf. Up to 10 MB per file and 30 MB in total. If a form requires proof and you attach nothing, you cannot submit.</li>
 <li><b>Save as draft (임시저장)</b> to continue later. Reopen it from <b>Approval → My drafts and saved drafts (기안함·임시저장)</b>.</li>
@@ -61,9 +63,16 @@ Being an administrator does not give access to other people's documents. A docum
 <h2 id="filing">6-1. Classifying and filing documents (문서함)</h2>
 <p>Documents are never <b>moved</b>; they get <b>tags</b>. The fixed system boxes (waiting, drafts, …) stay as they are. Tags show as chips under <b>분류·보관</b> on the right of a document.</p>
 <ul><li><b>Department classification (부서 분류):</b> each department has a classification tree (default 회계 accounting, 인사 HR, 비품 supplies, 일반 general). Pick it in <b>⑤ 분류·보관</b> when drafting; each form has a default (expense/claims → 회계, leave/trips → 인사, purchase → 비품, others → 일반). <b>문서함 → 부서 문서함</b> filters by classification. Department heads and administrators add, rename and delete entries under <b>분류 관리</b>.</li>
-<li><b>Project boxes (사업 문서함):</b> groups of documents for a project that can span departments. Department heads and administrators create them (name, optional code, participating departments and people, open/closed); the creator and administrators manage them. When drafting you can tag open projects you take part in.</li>
-<li><b>My folders (내 폴더):</b> private folders. Choose a folder when drafting, or add/remove a document on its page at any time.</li></ul>
+<li><b>Project boxes (사업 문서함):</b> groups of documents for a project that can span departments. Department heads and administrators create them (name, optional code, participating departments and people, open/closed). Departments and people are chosen from a <b>checkbox list with a search box</b>: type part of a name, ID or department to narrow the list (checked items always stay visible; the number selected is shown). It also works without scripts, as plain checkboxes; the creator and administrators manage them. When drafting you can tag open projects you take part in.</li>
+<li><b>My folders (내 폴더):</b> private folders. Choose a folder when drafting, or add/remove a document on its page at any time. Adding and removing is recorded in the audit log by document and folder number only; folder names are not recorded.</li></ul>
 <p><b>Who can change classification and projects:</b> the drafter while the document is a draft (saved, withdrawn or rejected); after submission the department head, a <b>document manager (문서관리 담당)</b> appointed by an administrator, and administrators. Every change is written to the audit log as before → after.</p>
+<p>The same filing work can be done from the terminal (<code>gyeol folder tag|untag</code>, <code>gyeol dclass</code>, <code>gyeol project</code>); see <a href="cli.html#c-folder">the CLI reference</a> for every option (<code>project members</code> replaces the whole list; an empty value clears it).</p>
+<pre><code>gyeol -u kim folder tag &lt;doc&gt; &lt;folder-id&gt;     # put a document in my folder   (untag: take it out)
+gyeol -u kim dclass list ; gyeol dclass get &lt;doc&gt; ; gyeol dclass set &lt;doc&gt; &lt;class-id|none&gt;
+gyeol -u lead dclass add [--parent ID] [--dept CODE] NAME
+gyeol -u lead project add [--code CODE] [--depts a,b] [--users x,y] NAME
+gyeol -u lead project members ID [--depts a,b] [--users x,y] ; gyeol project status ID open|closed
+gyeol -u kim project tag &lt;doc&gt; &lt;project-id&gt;      # untag: take it out</code></pre>
 <div class="note"><b>Tags never widen access</b>Project and department boxes list only documents you could already open. Joining a project does not let other departments see your private documents.</div>
 <h2 id="redraft">6-2. Draft from this document (이 문서로 기안)</h2>
 <p>On any document you can view, <b>이 문서로 기안</b> opens a <b>new draft</b> filled from it: title, form values, body, approval line, CC, classification, projects and your folders, all editable.</p>

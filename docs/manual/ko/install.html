@@ -120,6 +120,7 @@ sudo ./install.sh --lan    # 사내망에서 접속 허용(0.0.0.0)</code></pre>
 python3 e-approval-kr-&lt;버전&gt;.pyz setup      # 첫 관리자 만들기(터미널)</code></pre></div>
 <p>데이터는 환경변수 <code>GYEOLJAE_DATA</code> 또는 <code>--data 폴더</code>로 정합니다. 정하지 않으면 사용자 폴더(Windows <code>%LOCALAPPDATA%\gyeoljae</code>, macOS <code>~/Library/Application Support/gyeoljae</code>, Linux <code>~/.local/share/gyeoljae</code>)를 씁니다.
 터미널 창을 닫으면 서버도 꺼집니다.</p>
+<p><code>.pyz</code> 파일 하나로 충분합니다. 문서 편집기·글꼴·웹 스크립트까지 파일 안에서 직접 제공하므로 따로 설치하거나 옆에 복사할 것이 없습니다.</p>
 
 <h2 id="docker">Docker</h2>
 <div class="adm"><b>관리자용</b>저장소의 <code>Dockerfile</code>로 이미지를 만든 뒤 실행합니다.<pre><code>docker build -t e-approval-kr .

@@ -5,8 +5,8 @@ hanword_embed 는 표준 라이브러리만 쓰며, 자기 폴더를 sys.path �
 """
 from __future__ import annotations
 
-import functools
 import hashlib
+import io
 import json
 import os
 import re
@@ -41,14 +41,32 @@ def available() -> bool:
 # 쓰기 전·다시 쓸 때마다 VENDOR.md 의 sha256 과 대조한다(반입본 파일은 바꾸지 않음, 바이트 그대로).
 _cache_base = None
 _extract_lock = threading.Lock()
+_embed_lock = threading.RLock()   # embed() 1회 초기화·set_cache_dir 를 직렬화
+_embed_mod = None                  # 적재된 hanword_embed
+_loaded_base = None                # .pyz: 변환기를 적재한 캐시의 상위 폴더(set_cache_dir 변경 거절용)
 _KEY_PART = re.compile(r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*")
 _MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  (\S+)$")
 
 
 def set_cache_dir(path) -> None:
-    """.pyz 일 때 반입본을 풀 폴더(App 이 <데이터>/cache 로 지정). 폴더 설치에서는 쓰지 않음."""
+    """.pyz 일 때 반입본을 풀 폴더(App 이 <데이터>/cache 로 지정). 폴더 설치에서는 쓰지 않음.
+    변환기를 이미 어떤 캐시에서 적재했다면 다른 폴더로 바꾸지 않는다(RuntimeError): 적재된 모듈·finder 는
+    그 폴더에 묶여 있어서, 바꾸면 '설정은 새 폴더, 실제 읽기는 옛 폴더'가 된다. 같은 폴더 재지정은 그대로 둔다.
+    즉 .pyz 프로세스 하나는 데이터 폴더 하나(변환 뒤 다른 데이터 폴더로 App 을 만들면 거절). 지금은 복원(restore)도
+    새 CLI 프로세스라 해당 없음."""
     global _cache_base
-    _cache_base = Path(path)
+    p = Path(path)
+    with _embed_lock:
+        if _loaded_base is not None and _same_dir(p, _loaded_base) is False:
+            raise RuntimeError(f"hanword 변환기가 이미 다른 캐시 폴더에서 적재되었습니다: {_loaded_base}")
+        _cache_base = p
+
+
+def _same_dir(a: Path, b: Path):
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a == b
 
 
 def vendor_manifest(text: str) -> dict:
@@ -92,8 +110,10 @@ def _extract_vendor() -> Path:
     dest = base / ("hanword-" + hashlib.sha256(md).hexdigest()[:16])
     with _extract_lock:
         if _cache_ok(dest, man):
+            _try_private(dest)  # 0.2.5 이전에 푼 캐시도 나만 쓰게(내용은 위에서 해시로 확인)
             return dest
         base.mkdir(parents=True, exist_ok=True)
+        _try_private(base)
         tmp = base / (".tmp-" + dest.name + "-" + secrets.token_hex(4))
         tmp.mkdir(mode=0o700)
         try:
@@ -105,9 +125,11 @@ def _extract_vendor() -> Path:
                 if hashlib.sha256(data).hexdigest() != h:
                     raise RuntimeError(f"반입한 hanword 파일이 VENDOR.md 와 다릅니다: {k}")
                 fp = tmp.joinpath(*PurePosixPath(k).parts)
-                fp.parent.mkdir(parents=True, exist_ok=True)
+                fp.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 fp.write_bytes(data)
+                _try_private(fp, 0o600)
             (tmp / "VENDOR.md").write_bytes(md)
+            _try_private(tmp / "VENDOR.md", 0o600)
             if dest.exists():
                 shutil.rmtree(dest, ignore_errors=True)
             try:
@@ -121,6 +143,14 @@ def _extract_vendor() -> Path:
         if not _cache_ok(dest, man):
             raise RuntimeError("hanword 캐시 검증 실패")
         return dest
+
+
+def _try_private(p: Path, mode: int = 0o700) -> None:
+    """우리가 만든 캐시 폴더·파일을 나만 쓰게(best effort; Windows·권한 없는 FS 는 그냥 둠)."""
+    try:
+        os.chmod(p, mode)
+    except OSError:
+        pass
 
 
 def vendor_dir() -> Path:
@@ -173,8 +203,18 @@ class _NoPathEntry:
 
 
 def _check_cache_dir(d: Path, man: dict) -> None:
-    """.pyz 캐시 폴더 검사: 목록 밖 항목 금지, POSIX 는 소유자=나 그리고 전체(other) 쓰기 없음(폴더와 상위).
-    그룹 쓰기는 umask 002(사용자 전용 그룹) 환경의 정상값이라 허용 — 새로 풀 때는 0700 으로 만든다."""
+    """.pyz 캐시 폴더 검사(심층 방어): 목록 밖 항목 금지, POSIX 는 소유자=나 그리고 전체(other) 쓰기 없음(폴더와 상위).
+    그룹 쓰기는 umask 002(사용자 전용 그룹) 환경의 정상값이라 허용 — 새로 풀 때는 0700/0600 으로 만든다.
+
+    상위 폴더를 신뢰 루트('/')까지 거슬러 검사하지 않는 이유: 무결성은 경로·권한이 아니라 내용 해시로 지킨다.
+    실행 중 캐시에서 읽는 바이트는 (1) 반입 .py — _VendorFinder 가 한 번 읽은 바이트를 해시 대조 뒤 compile,
+    (2) 데이터 파일 — hwpx_skeleton.hwpx 는 embed() 가 해시 대조한 바이트를 메모리에 두고 변환기가 그걸 연다
+    (_DATA_FILES), 둘뿐이다(글꼴·편집기 정적 파일은 캐시가 아니라 패키지에서 pkgfiles 로 낸다).
+    범위: gyeoljae 가 부르는 sanitize_html·normalize_page·MARGIN_PRESETS·html_to_hwpx·html_to_docx 기준이다.
+    반입본의 html_to_pdf(APP/htmlpdf.js·APP/font)는 검증 없이 경로로 읽으므로 쓰지 않는다(export 는 hwpx/docx 만).
+    그래서 조상 폴더를 남이 바꿔(이름 바꾸기·심볼릭 링크) 캐시 경로를 가로채도 검증 안 된 바이트는 실행·사용되지 않고
+    최악이 변환 실패(서비스 거부)다. 조상 검사는 그 위에 TOCTOU 를 막지 못하면서 umask 002 홈(~/.local 0775 등)을
+    거절하게 되므로 하지 않는다."""
     allowed = {PurePosixPath(k).parts[0] for k in man} | {"VENDOR.md", "__pycache__"}
     extra = sorted(x.name for x in d.iterdir() if x.name not in allowed)
     if extra:
@@ -197,23 +237,84 @@ def _trusted_manifest() -> dict:
                            .joinpath("VENDOR.md").read_bytes().decode("utf-8"))
 
 
-@functools.lru_cache(maxsize=1)
+class _VerifiedBlob:
+    """해시 대조를 마친 데이터 파일 바이트를 읽기 전용 파일처럼. zipfile.ZipFile(hwpx_std.SKELETON) 이 경로 대신
+    이걸 열게 한다 — 그러면 변환 때마다 디스크(캐시)를 다시 읽지 않아 검사 뒤 바꿔치기(TOCTOU)가 소용없다.
+    위치(seek)는 스레드마다 따로(동시 변환), 같은 스레드에서는 ZipFile 이 읽기마다 seek 하므로 공유해도 된다."""
+
+    def __init__(self, data: bytes, name: str):
+        self._data, self.name, self._tl = bytes(data), name, threading.local()
+
+    def _f(self):
+        f = getattr(self._tl, "f", None)
+        if f is None:
+            f = self._tl.f = io.BytesIO(self._data)
+        return f
+
+    def seek(self, *a):
+        return self._f().seek(*a)
+
+    def tell(self):
+        return self._f().tell()
+
+    def read(self, *a):
+        return self._f().read(*a)
+
+    def seekable(self):
+        return True
+
+
+# 반입 변환기가 자기 폴더에서 경로로 여는 데이터 파일: (모듈, 속성) → VENDOR.md 키. 적재 때 해시 대조한 바이트로 바꾼다.
+_DATA_FILES = {("hwpx_std", "SKELETON"): "hwpx_skeleton.hwpx"}
+
+
+def _pin_data_files(d: Path, man: dict) -> None:
+    import importlib
+    for (mod, attr), key in _DATA_FILES.items():
+        m = importlib.import_module(mod)  # _VendorFinder 가 검증된 소스로 적재
+        cur = getattr(m, attr)
+        if isinstance(cur, _VerifiedBlob):
+            continue
+        if Path(cur) != d.joinpath(*PurePosixPath(key).parts):
+            raise RuntimeError(f"hanword {mod}.{attr} 경로가 예상과 다릅니다(반입본 갱신 시 _DATA_FILES 확인)")
+        data = d.joinpath(*PurePosixPath(key).parts).read_bytes()
+        if hashlib.sha256(data).hexdigest() != man.get(key):
+            raise RuntimeError(f"반입한 hanword 데이터 파일이 VENDOR.md 와 다릅니다: {key}")
+        setattr(m, attr, _VerifiedBlob(data, key))
+
+
 def embed():
+    """검증된 hanword_embed 모듈(프로세스당 1회 적재). 동시 첫 호출도 _embed_lock 으로 한 번만 초기화 —
+    finder 중복 등록·캐시 동시 풀기 없음."""
+    m = _embed_mod
+    if m is not None:
+        return m
+    with _embed_lock:
+        return _embed_mod if _embed_mod is not None else _load_embed()
+
+
+def _load_embed():
+    global _embed_mod, _loaded_base
     if not available():
         raise RuntimeError("hanword 편집기가 반입되지 않았습니다(scripts/vendor_hanword.py)")
     d = vendor_dir()
+    if not pkgfiles.on_disk():
+        _loaded_base = d.parent  # import 전에 고정: 도중 실패해도 sys.modules 에 남은 모듈이 이 폴더 것이므로
     man = _trusted_manifest()
     if not pkgfiles.on_disk():
         _check_cache_dir(d, {k: h for k, h in man.items() if not k.startswith("font/")})
     mods = {k[:-3]: h for k, h in man.items() if "/" not in k and k.endswith(".py")}
-    if not any(isinstance(f, _VendorFinder) for f in sys.meta_path):
-        sys.meta_path.insert(0, _VendorFinder(d, mods))
+    # finder 는 늘 하나, 지금 폴더(d)용. 예전 것(다른 폴더)이 남아 있으면 뺀다.
+    sys.meta_path[:] = [f for f in sys.meta_path if not isinstance(f, _VendorFinder)]
+    sys.meta_path.insert(0, _VendorFinder(d, mods))
     p = str(d)
     if not isinstance(sys.path_importer_cache.get(p), _NoPathEntry):
         sys.path_importer_cache[p] = _NoPathEntry()  # 이 폴더에서 경로 기반 import 금지(반입 모듈은 위 finder 만)
     if p not in sys.path:
         sys.path.append(p)  # 맨 뒤: 표준 라이브러리·설치 패키지가 늘 먼저
     import hanword_embed  # noqa: E402  (_VendorFinder 가 검증된 소스로 적재)
+    _pin_data_files(d, man)
+    _embed_mod = hanword_embed
     return hanword_embed
 
 

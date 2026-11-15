@@ -503,10 +503,12 @@ class FilingMixin:
             if not c.execute("select 1 from folders where id=? and owner=?", (fid, actor)).fetchone():
                 raise NotFound("폴더 없음")
             if on:
-                c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
-                          (fid, d["id"], now_iso()))
+                n = c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
+                              (fid, d["id"], now_iso())).rowcount
             else:
-                c.execute("delete from folder_docs where folder_id=? and doc_id=?", (fid, d["id"]))
+                n = c.execute("delete from folder_docs where folder_id=? and doc_id=?", (fid, d["id"])).rowcount
+            if n:
+                self._audit_folders(c, actor, d["id"], [fid] if on else [], [] if on else [fid])
             return [r["folder_id"] for r in c.execute(
                 "select fd.folder_id from folder_docs fd join folders f on f.id=fd.folder_id "
                 "where fd.doc_id=? and f.owner=? order by fd.folder_id", (d["id"], actor))]
@@ -519,12 +521,15 @@ class FilingMixin:
             want = set(_ids(folder_ids))
             if want - mine:
                 raise NotFound("폴더 없음")
+            added, removed = [], []
             for fid in mine:
                 if fid in want:
-                    c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
-                              (fid, int(doc_id), now_iso()))
-                else:
-                    c.execute("delete from folder_docs where folder_id=? and doc_id=?", (fid, int(doc_id)))
+                    if c.execute("insert or ignore into folder_docs(folder_id,doc_id,added) values(?,?,?)",
+                                 (fid, int(doc_id), now_iso())).rowcount:
+                        added.append(fid)
+                elif c.execute("delete from folder_docs where folder_id=? and doc_id=?", (fid, int(doc_id))).rowcount:
+                    removed.append(fid)
+            self._audit_folders(c, actor, int(doc_id), added, removed)
 
     # ------------------------------------------------------------ 문서관리 담당
     def set_doc_manager(self, actor, ident, on=True):

@@ -175,6 +175,28 @@ class FilingCoreTest(unittest.TestCase):
         with self.assertRaises(NotFound):  # 못 보는 문서
             a.doc_set_folders("sal1", m["id"], [])
 
+    def test_folder_tagging_audited(self):
+        """내 폴더 넣기/빼기는 바뀐 것만 감사로그(folder_tag)에 남고, 폴더 이름(개인 정보)은 남기지 않는다."""
+        a = self.app
+        f = a.folder_create("dev1", "비밀 폴더명")
+        g = a.folder_create("dev1", "둘째")
+        m = a.create_draft("dev1", "x", "b", ["devlead"], folders=[f["id"]])
+        a.doc_set_folders("dev1", m["id"], [f["id"]])           # 변화 없음 → 기록 없음
+        a.doc_tag_folder("dev1", m["id"], g["id"], True)
+        a.doc_tag_folder("dev1", m["id"], g["id"], True)         # 이미 있음 → 기록 없음
+        a.doc_set_folders("dev1", m["id"], [g["id"]])
+        a.folder_remove("dev1", g["id"], m["id"])
+        a.folder_add("dev1", f["id"], m["id"])
+        a.folder_delete("dev1", f["id"])
+        got = [(e["doc"], e["detail"]["added"], e["detail"]["removed"]) for e in audits(a, "folder_tag")]
+        self.assertEqual(got, [(m["id"], [f["id"]], []), (m["id"], [g["id"]], []), (m["id"], [], [f["id"]]),
+                               (m["id"], [], [g["id"]]), (m["id"], [f["id"]], [])])
+        self.assertTrue(all(e["actor"] == "dev1" for e in audits(a, "folder_tag")))
+        self.assertEqual([e["detail"] for e in audits(a, "folder_delete")], [{"folder": f["id"], "docs": 1}])
+        with a._ro() as c:
+            self.assertFalse(any("비밀 폴더명" in r["line"] for r in c.execute("select line from audit_log")))
+        self.assertTrue(a.verify_audit("admin")["ok"])
+
     def test_redraft(self):
         a = self.app
         a.setting_set("admin", "allow_freeform", False)
