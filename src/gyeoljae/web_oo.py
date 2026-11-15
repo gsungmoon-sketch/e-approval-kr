@@ -60,7 +60,7 @@ def public_route(h, app):
             r = _json(Resp, 413, {"error": 1})
             r.headers["Connection"] = "close"
             return r
-        raw = h.rfile.read(n) if n else b""
+        raw = h.read_req_body(n)
         try:
             body = json.loads(raw.decode("utf-8")) if raw else {}
         except ValueError:

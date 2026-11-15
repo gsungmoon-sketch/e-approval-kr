@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import re
+import socket
 import threading
 import time
 import unittest
@@ -488,6 +489,59 @@ class WebOOTest(unittest.TestCase):
                             headers={"Origin": "http://evil.test"})
         self.assertEqual((st, json.loads(body)), (200, {"error": 0}))
         self.assertEqual(c.req("/oo/edit/l/1")[0], 303)   # 편집기 화면은 로그인 필요
+
+    def raw_post(self, path, body, declared=None, sndbuf=None, send_body=True):
+        """원시 소켓 POST — 본문을 다 보낸 뒤에야 응답을 읽는다(urllib 과 같은 순서)."""
+        s = socket.create_connection(("127.0.0.1", self.srv.server_address[1]), timeout=10)
+        try:
+            if sndbuf:  # 작은 송신 버퍼 = 서버가 응답할 때 본문이 아직 전송 중(macOS 루프백 재현)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, sndbuf)
+            n = len(body) if declared is None else declared
+            s.sendall(f"POST {path} HTTP/1.1\r\nHost: t\r\nContent-Type: application/json\r\n"
+                      f"Content-Length: {n}\r\n\r\n".encode() + (body if send_body else b""))
+            out = b""
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    return out
+                out += chunk
+        finally:
+            s.close()
+
+    def test_rejected_body_not_reset(self):
+        # 읽지 않고 거절한 본문이 소켓에 남은 채 닫히면 RST — 클라이언트는 보내는 중 "Connection reset"(CI macOS).
+        # 서버가 응답 뒤 FIN 후 남은 본문을 상한 안에서 버리며 읽어야 상태 코드가 도착한다.
+        cfg = self.app.oo_editor_config("dev1", "l", self.fid, None, "edit")["config"]
+        cb = urllib.parse.urlsplit(cfg["editorConfig"]["callbackUrl"]).path
+        big = b"x" * (300 * 1024)
+        for path, want in ((cb, b" 413 "), ("/oo/cb/" + "A" * 40, b" 403 "), ("/oo/dl/" + "A" * 40, b" 404 "),
+                           ("/login", b" 413 ")):
+            out = self.raw_post(path, big, sndbuf=4096)
+            self.assertIn(want, out.split(b"\r\n", 1)[0], path)
+
+    def test_rejected_body_linger_bounded(self):
+        # 선언만 크고 본문을 조금씩 흘리는(slowloris) 연결 — 응답은 즉시 오고, 서버의 버리기 읽기는
+        # LINGER_SECS 안에 끝나 연결을 닫는다(끝없이 읽어 주면 계속 보내도 오류가 안 난다).
+        from gyeoljae import web
+        s = socket.create_connection(("127.0.0.1", self.srv.server_address[1]), timeout=10)
+        try:
+            s.sendall(f"POST /oo/cb/{'A' * 40} HTTP/1.1\r\nHost: t\r\nContent-Length: {100 * 1024 * 1024}\r\n\r\n"
+                      .encode() + b"x" * 1024)
+            out = b""
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                out += chunk
+            self.assertTrue(out.startswith(b"HTTP/1.0 403"), out[:40])
+            t0 = time.monotonic()
+            with self.assertRaises(OSError):
+                while time.monotonic() - t0 < web.LINGER_SECS + 5:
+                    s.sendall(b"x" * 1024)
+                    time.sleep(0.05)
+            self.assertLess(time.monotonic() - t0, web.LINGER_SECS + 3)
+        finally:
+            s.close()
 
     def test_admin_page(self):
         c = self.client()

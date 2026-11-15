@@ -10,8 +10,10 @@ import json
 import html
 import os
 import re
+import socket
 import sys
 import threading
+import time
 import urllib.parse
 from http import HTTPStatus
 from pathlib import PurePosixPath
@@ -27,6 +29,12 @@ MAX_REQ = 32 * 1024 * 1024
 MAX_REQ_ANON = 16 * 1024          # 로그인 전 요청 본문 상한
 MAX_CONCURRENT = 32               # 동시 처리 요청 상한(초과 시 503)
 _SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT)
+# 읽지 않고 거절한 요청 본문(401/403/404/413/503 등): 응답 뒤 FIN 을 보내고 남은 본문을 이만큼만 버리며 읽는다.
+# 읽지 않은 데이터를 둔 채 close 하면 커널이 RST 를 보내, 아직 본문을 보내는 중인 클라이언트(특히 macOS)는
+# 상태 코드를 못 보고 "Connection reset" 으로 끝난다. 바이트·시간 모두 상한(슬롯은 이미 반납한 뒤).
+# 1 MiB 를 넘는 본문은 다 버리지 않으므로 여전히 리셋될 수 있다(의도한 절충 — 거절된 요청에 쓰는 비용 상한).
+LINGER_BYTES = 1024 * 1024
+LINGER_SECS = 2.0
 COOKIE = "gyeol_sid"
 SECURE_COOKIE = os.environ.get("GYEOLJAE_COOKIE_SECURE") == "1"
 TRUST_PROXY = os.environ.get("GYEOLJAE_TRUST_PROXY") == "1"
@@ -166,6 +174,56 @@ def make_handler(app: App):
                 self.connection.settimeout(self.timeout)
                 hs()
 
+        def read_req_body(self, n):
+            """요청 본문 n 바이트 읽기(본문을 다룬 것으로 표시 — finish() 의 버리기 대상에서 빠짐)."""
+            self._body_taken = n > 0  # 0 이면(Content-Length 없음·chunked 포함) 남은 본문은 finish() 가 버림
+            return self.rfile.read(n) if n > 0 else b""
+
+        def _unread_body(self):
+            """응답 뒤에도 소켓에 남아 있을 수 있는 본문 바이트 수(상한 LINGER_BYTES)."""
+            if getattr(self, "_body_taken", False) or getattr(self, "headers", None) is None:
+                return 0
+            if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+                return LINGER_BYTES  # 길이를 모름 — EOF·상한·시간 중 먼저 오는 것까지
+            raw = self.headers.get("Content-Length")
+            if raw is None:
+                return 0
+            try:
+                n = int(raw)
+            except ValueError:
+                return LINGER_BYTES
+            return LINGER_BYTES if n < 0 else min(n, LINGER_BYTES)
+
+        def _linger_close(self, left):
+            """응답을 다 보낸 뒤 FIN(SHUT_WR) → 남은 본문을 바이트·시간 상한 안에서 버리며 읽기.
+            읽지 않은 데이터가 남은 채 닫으면 RST 가 나가 클라이언트가 상태 코드를 잃는다."""
+            try:
+                self.wfile.flush()
+                self.connection.shutdown(socket.SHUT_WR)
+            except OSError:
+                return
+            deadline = time.monotonic() + LINGER_SECS
+            try:
+                while left > 0:
+                    remain = deadline - time.monotonic()
+                    if remain <= 0:
+                        break
+                    self.connection.settimeout(remain)
+                    chunk = self.rfile.read1(min(left, 65536))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+            except (OSError, ValueError):
+                pass
+
+        def finish(self):
+            try:
+                left = self._unread_body()
+                if left > 0:
+                    self._linger_close(left)
+            finally:
+                super().finish()
+
         def do_GET(self):
             self.guarded("GET")
 
@@ -262,7 +320,7 @@ def make_handler(app: App):
             if n < 0 or n > (MAX_REQ if self.sess else MAX_REQ_ANON):
                 raise Resp(413, self.page("너무 큼", "<p class=err>요청이 너무 큽니다(32MB)</p>"),
                            {"Connection": "close"})
-            data = self.rfile.read(n) if n else b""
+            data = self.read_req_body(n)
             ct = self.headers.get("Content-Type", "")
             if ct.startswith("multipart/form-data"):
                 self.form, self.files = parse_multipart(data, ct)
