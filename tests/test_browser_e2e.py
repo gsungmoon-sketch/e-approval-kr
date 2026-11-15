@@ -149,8 +149,8 @@ class BrowserE2ETest(unittest.TestCase):
             c.close()
 
     # ------------------------------------------------------------ 도움
-    def login(self, user):
-        ctx = self.browser.new_context(viewport={"width": 1400, "height": 1000})
+    def login(self, user, size=(1400, 1000)):
+        ctx = self.browser.new_context(viewport={"width": size[0], "height": size[1]})
         self.ctxs.append(ctx)
         pg = ctx.new_page()
         pg.set_default_timeout(30000)
@@ -172,15 +172,23 @@ class BrowserE2ETest(unittest.TestCase):
             out.append(p)
         return out
 
-    def open_editor(self, pg, title):
-        pg.goto(self.base + "/new?form=general")
-        fr = pg.frame_locator("#edframe")
-        frame = pg.frame("edframe")
+    def wait_editor(self, pg):
+        pg.wait_for_selector("#edframe", state="attached")
+        for _ in range(100):
+            frame = pg.frame("edframe")
+            if frame:
+                break
+            pg.wait_for_timeout(100)
         frame.wait_for_function("() => window.WP && document.getElementById('page')")
         # 'ready' → host 'load'(양식 본문) 까지: 편집기 입력칸이 보이고 입력칸(.edfb)은 숨겨짐
         pg.wait_for_function("() => !document.getElementById('edhost').hidden && "
                              "[...document.querySelectorAll('.edfb')].every(x => x.hidden)")
         pg.wait_for_timeout(500)
+        return pg.frame_locator("#edframe"), frame
+
+    def open_editor(self, pg, title):
+        pg.goto(self.base + "/new?form=general")
+        fr, frame = self.wait_editor(pg)
         pg.fill("#ti", title)
         pg.fill("#ln", "devlead")
         return fr, frame
@@ -386,6 +394,187 @@ class BrowserE2ETest(unittest.TestCase):
         html = App(str(self.data)).show("dev1", did)["doc_html"]
         self.assertRegex(html, r"<(b|strong)[^>]*>굵게할글자|font-weight: ?(bold|700)[^>]*>[^<]*굵게할글자")
         self.assertEqual(csp, [], "CSP 위반 없음")
+        self.assertEqual(self.errors, [])
+
+    def frame_h(self, pg):
+        return pg.evaluate("() => document.getElementById('edframe').getBoundingClientRect().height")
+
+    def submit_visible(self, pg, h):
+        box = pg.locator("button[name=go][value=submit]").bounding_box()
+        return pg.locator("button[name=go][value=submit]").is_visible() and box and box["y"] + box["height"] <= h + 1
+
+    def test_5_editor_fills_screen(self):  # 편집기 크기: 기본 = 화면 높이에 맞춤, 크게 보기 = 화면 가득(작은 화면은 기본값)
+        self.sizes = {}
+        for w, h in ((1920, 1080), (1366, 768), (1024, 600), (800, 480)):
+            with self.subTest(size=f"{w}x{h}"):
+                pg = self.login("dev1", (w, h))
+                pg.goto(self.base + "/new?form=general")
+                self.wait_editor(pg)
+                small = w <= 1024 or h <= 700
+                big = pg.evaluate("() => document.body.classList.contains('edbig')")
+                self.assertEqual(big, small, "작은 화면만 크게 보기로 시작")
+                if not small:
+                    fh = self.frame_h(pg)
+                    self.sizes[(w, h, "default")] = fh / h
+                    self.assertGreaterEqual(fh, 0.6 * h, f"기본 편집기 높이 {fh}/{h}")
+                    self.assertTrue(self.submit_visible(pg, h), "상신 단추 보임(기본)")
+                    pg.click("button.edbig-t")
+                    pg.wait_for_function("() => document.body.classList.contains('edbig')")
+                pg.wait_for_timeout(200)
+                fh = self.frame_h(pg)
+                self.sizes[(w, h, "big")] = fh / h
+                self.assertGreaterEqual(fh, 0.8 * h, f"크게 보기 편집기 높이 {fh}/{h}")
+                self.assertTrue(self.submit_visible(pg, h), "상신 단추 보임(크게 보기)")
+                # A4 쪽은 편집기 안에서 가운데(쪽보다 넓을 때)
+                cx = pg.frame("edframe").evaluate("() => { const r = document.getElementById('page').getBoundingClientRect();"
+                                                  " return [r.left + r.width / 2, innerWidth, r.width]; }")
+                if cx[2] < cx[1]:
+                    self.assertLess(abs(cx[0] - cx[1] / 2), 40, f"쪽 가운데 {cx}")
+                self.assertFalse(pg.locator("header.top").is_visible())
+                # 결재 정보 덮개: 제목·결재선이 그 안에서 보이고 고칠 수 있음
+                self.assertFalse(pg.locator("#ti").is_visible())
+                pg.click("button.edinfo-t")
+                pg.fill("#ti", f"크게 보기 {w}x{h}")
+                pg.fill("#ln", "devlead")
+                pg.keyboard.press("Escape")
+                self.assertFalse(pg.locator("#edinfo").is_visible(), "Esc 로 덮개 닫힘")
+                # 기억: 다시 열어도 크게 보기(작은 화면이 아니면 기본은 꺼짐이므로 기억 확인이 됨)
+                pg.reload()
+                self.wait_editor(pg)
+                self.assertTrue(pg.evaluate("() => document.body.classList.contains('edbig')"), "크게 보기 기억")
+                # 전체 화면 → Esc 로 돌아감
+                if pg.evaluate("() => document.fullscreenEnabled"):
+                    pg.click("button.edfull-t")
+                    pg.wait_for_function("() => !!document.fullscreenElement")
+                    pg.keyboard.press("Escape")
+                    pg.wait_for_function("() => !document.fullscreenElement")
+                # 끄면 원래 화면, 다시 열어도 꺼짐
+                pg.click("button.edbig-t")
+                self.assertTrue(pg.locator("header.top").is_visible())
+                self.assertTrue(pg.locator("#ti").is_visible(), "제목 칸 제자리")
+                pg.reload()
+                self.wait_editor(pg)
+                self.assertFalse(pg.evaluate("() => document.body.classList.contains('edbig')"), "끈 것도 기억")
+                self.assertEqual(self.errors, [])
+        # 크게 보기에서 제목을 비운 채 상신 → 결재 정보가 열려 제목 칸을 보여 줌, 채우면 상신
+        pg = self.login("dev1", (800, 480))
+        pg.goto(self.base + "/new?form=general")
+        fr, frame = self.wait_editor(pg)
+        self.type_text(fr, "작은 화면 상신")
+        pg.click("button[name=go][value=submit]")
+        pg.wait_for_function("() => !document.getElementById('edinfo').hidden")
+        pg.fill("#ti", "작은 화면 상신")
+        pg.fill("#ln", "devlead")
+        with pg.expect_navigation(url=re.compile(r"/doc/\d+")):
+            pg.click("button[name=go][value=submit]")
+        did = int(re.search(r"/doc/(\d+)", pg.url).group(1))
+        m = App(str(self.data)).show("dev1", did)
+        self.assertEqual((m["title"], m["status"]), ("작은 화면 상신", "pending"))
+        self.assertIn("작은 화면 상신", m["doc_html"])
+        print("\n편집기 높이/화면:", {f"{w}x{h} {k}": round(v, 2) for (w, h, k), v in self.sizes.items()},
+              file=sys.stderr)
+        self.assertEqual(self.errors, [])
+
+    def page_text(self, frame):
+        return frame.locator("#page").inner_text()
+
+    def test_6_autosave_navigate_restore(self):  # 작성 중 다른 메뉴로 갔다 와도 남아 있음 + 서버 저장 실패 시 이 브라우저 사본
+        pg = self.login("dev1")
+        fr, frame = self.open_editor(pg, "자동 저장 E2E")
+        self.type_text(fr, "자동저장 첫 글")
+        # 5초 쉬면 자동 저장 → 주소가 /doc/N/edit
+        pg.wait_for_function("() => /자동 저장됨/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        self.assertRegex(pg.url, r"/doc/\d+/edit$")
+        did = int(re.search(r"/doc/(\d+)/edit", pg.url).group(1))
+        # 바로 이어 쓰고(5초 전) 다른 메뉴로 → 먼저 저장하고 이동
+        self.type_text(fr, "떠나기 직전 글")
+        with pg.expect_navigation():
+            pg.click("nav.side a[href='/']")
+        app = App(str(self.data))
+        self.assertIn("떠나기 직전 글", app.show("dev1", did)["doc_html"])
+        # 새 기안 → 이어 쓰기 안내 → 그대로 열림
+        pg.goto(self.base + "/new")
+        link = pg.locator(f"a[href='/doc/{did}/edit']", has_text="이어서 쓰기")
+        self.assertEqual(link.count(), 1)
+        link.click()
+        fr, frame = self.wait_editor(pg)
+        self.assertIn("떠나기 직전 글", self.page_text(frame))
+        self.assertEqual(pg.input_value("#ti"), "자동 저장 E2E")
+        # 다른 사용자에게는 안내도 문서도 없음
+        other = self.login("devlead")
+        other.goto(self.base + "/new")
+        self.assertEqual(other.locator(f"a[href='/doc/{did}/edit']").count(), 0)
+        # 서버 저장 실패(네트워크 끊김 흉내) → '저장 실패' + 이 브라우저 사본, 나갈 때 확인
+        pg.route("**/doc/*/edit", lambda r: r.abort() if r.request.method == "POST" else r.continue_())
+        self.type_text(fr, "오프라인 글")
+        pg.wait_for_function("() => /저장 실패/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        self.assertTrue(pg.locator(".edstat button").is_visible(), "다시 시도 단추")
+        self.assertNotIn("오프라인 글", app.show("dev1", did)["doc_html"])
+        msgs = []
+        pg.once("dialog", lambda d: (msgs.append(d.message), d.accept()))
+        with pg.expect_navigation():
+            pg.click("nav.side a[href='/']")
+        self.assertTrue(msgs and "저장하지 못했습니다" in msgs[0], msgs)
+        pg.unroute("**/doc/*/edit")
+        # 다시 열면 되살리기 제안 → 되살리면 편집기에 돌아오고 서버에도 저장됨
+        pg.goto(f"{self.base}/doc/{did}/edit")
+        fr, frame = self.wait_editor(pg)
+        self.assertNotIn("오프라인 글", self.page_text(frame))
+        pg.wait_for_selector(".edrestore")
+        self.assertIn("저장 안 된 작성분이 있어요", pg.locator(".edrestore").inner_text())
+        pg.click(".edrestore button:has-text('되살리기')")
+        frame.wait_for_function("() => /오프라인 글/.test(document.getElementById('page').innerText)")
+        pg.wait_for_function("() => /자동 저장됨/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        self.assertIn("오프라인 글", app.show("dev1", did)["doc_html"])
+        # 상신 → 이 브라우저 사본 없음, 이어 쓰기 안내 없음
+        with pg.expect_navigation(url=re.compile(r"/doc/\d+")):
+            pg.click("button[name=go][value=submit]")
+        self.assertEqual(app.show("dev1", did)["status"], "pending")
+        left = pg.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gyeoljae.draft.'))")
+        self.assertEqual(left, [], "상신하면 이 브라우저 사본 지움")
+        pg.goto(self.base + "/new")
+        self.assertEqual(pg.locator(f"a[href='/doc/{did}/edit']").count(), 0)
+        self.assertEqual(self.errors, [])
+
+    def test_7_new_draft_offline_restore_and_logout(self):  # 첫 저장부터 실패한 새 기안: 같은 양식 새 기안에서 되살리기, 로그아웃은 사본 지움
+        pg = self.login("dev1")
+        pg.route("**/new", lambda r: r.abort() if r.request.method == "POST" else r.continue_())
+        fr, frame = self.open_editor(pg, "오프라인 새 기안")
+        self.type_text(fr, "처음부터 오프라인")
+        pg.wait_for_function("() => /저장 실패/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        pg.once("dialog", lambda d: d.accept())
+        with pg.expect_navigation():
+            pg.click("nav.side a[href='/']")
+        pg.unroute("**/new")
+        pg.goto(self.base + "/new?form=general")
+        fr, frame = self.wait_editor(pg)
+        pg.wait_for_selector(".edrestore")
+        pg.click(".edrestore button:has-text('되살리기')")
+        frame.wait_for_function("() => /처음부터 오프라인/.test(document.getElementById('page').innerText)")
+        self.assertEqual(pg.input_value("#ti"), "오프라인 새 기안")
+        pg.wait_for_function("() => /자동 저장됨/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        did = int(re.search(r"/doc/(\d+)/edit", pg.url).group(1))
+        self.assertIn("처음부터 오프라인", App(str(self.data)).show("dev1", did)["doc_html"])
+        # 버리기를 고르지 않은 사본은 남고, 로그아웃하면 지워짐(Clear-Site-Data)
+        pg.evaluate("() => localStorage.setItem('gyeoljae.draft.dev1.999', JSON.stringify({u:'dev1',at:Date.now(),html:'x'}))")
+        with pg.expect_navigation():
+            pg.click("form[action='/logout'] button")
+        self.assertIn("/login", pg.url)
+        left = pg.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gyeoljae.draft.'))")
+        self.assertEqual(left, [], "로그아웃하면 사본 지움")
+        self.assertEqual(self.errors, [])
+
+    def test_8_submit_right_after_typing_one_doc(self):  # 자동 저장 대기 중 바로 상신 → 문서 1건, 늦은 자동 저장 없음
+        pg = self.login("dev1")
+        fr, frame = self.open_editor(pg, "바로 상신 E2E")
+        self.type_text(fr, "바로 상신")
+        with pg.expect_navigation(url=re.compile(r"/doc/\d+")):
+            pg.click("button[name=go][value=submit]")
+        pg.wait_for_timeout(7000)
+        app = App(str(self.data))
+        rows = [r for b in ("drafts", "progress") for r in app.list_box("dev1", b)
+                if r["title"] in ("바로 상신 E2E", app.AUTO_TITLE if hasattr(app, "AUTO_TITLE") else "(제목 없음 · 자동 저장)")]
+        self.assertEqual([r["status"] for r in rows], ["pending"], rows)
         self.assertEqual(self.errors, [])
 
 

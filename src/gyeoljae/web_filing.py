@@ -110,6 +110,8 @@ def draft_section(h, app, user, m):
         if m.get("source_attachments"):
             src += (f"<label><input type=checkbox name=copy_atts value=1{' checked' if m.get('copy_atts') else ''}>"
                     f" 원문 첨부도 가져오기 ({int(m['source_attachments'])}개)</label>")
+    if new:  # 새 기안이 자동 저장으로 먼저 만들어진 뒤에도 폴더 선택을 반영(web._set_new_folders)
+        src = "<input type=hidden name=folders_new value=1>" + src
     return (f"<fieldset class=card><legend>⑤ 분류·보관</legend><input type=hidden name=tags value=1>{src}"
             f"<label for=dc>부서 분류</label><select id=dc name=dclass>{opts}</select>"
             f"{'<p class=lbl>사업 문서함 <span class=mut>(참여 중인 진행 사업)</span></p>' + pj if pj else ''}{fl}"

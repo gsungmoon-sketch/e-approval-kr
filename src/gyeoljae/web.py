@@ -46,13 +46,16 @@ CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=
 _BASE_CSP = "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 # 스크립트는 편집기 페이지와 그것을 담는 기안 화면에만, 'self' 정적 파일만(인라인·eval 없음)
 CSP = {None: _BASE_CSP,
-       "host": _BASE_CSP + "; script-src 'self'; frame-src 'self'",
+       # 기안 화면: 편집기 틀 + 자동 저장(같은 출처 POST 만 — connect-src 'self')
+       "host": _BASE_CSP + "; script-src 'self'; frame-src 'self'; connect-src 'self'",
        "script": _BASE_CSP + "; script-src 'self'",   # 작은 화면 보조 스크립트(static/*.js)만 — 예: 참여자 고르기
        "doc": _BASE_CSP.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'").replace(
            "img-src 'self'", "img-src 'self' data:"),
        # hanword embed.html: 'self' 스크립트만, embed.html 의 style="" 속성 때문에 style 만 'unsafe-inline', /api 호출 없음
        "editor": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
                  "font-src 'self'; connect-src 'none'; form-action 'none'; frame-ancestors 'self'; base-uri 'none'"}
+
+AUTO_TITLE = core.AUTO_TITLE
 
 CSS = """
 :root{--bg:#F5F6F8;--fg:#1A1F2B;--mut:#4A5263;--card:#fff;--line:#C9CED8;--acc:#1F4E9A;--primary:#1F4E9A;--acc-fg:#fff;--focus:#FFB000;--warn:#B3261E;--ok:#1B6E35;--badge:#C62828;--side:#EEF1F6;--chip-p:#DCE8FB;--chip-d:#D7F0DD;--chip-r:#FADBD8;--chip-w:#ECEEF2;--chip-l:#FFE8B3}
@@ -120,6 +123,18 @@ form.inline{display:inline}ul.atts{list-style:none;padding:0;margin:4px 0}ul.att
  body{background:#fff;font-size:11pt}.layout{display:block}main{max-width:none;padding:0}.card{border:0;padding:0}a{color:#000;text-decoration:none}}
 details.paperprev>summary{cursor:pointer;font-weight:700}
 .edhost iframe{width:100%;height:80vh;min-height:480px;border:1px solid var(--line);background:#e9e9e9;display:block}
+body.edpage main{max-width:none}body.edpage .edhost iframe{height:calc(var(--vh,100vh) - var(--hd,56px) - var(--sb,56px) - 24px);min-height:360px}
+.edtools{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;margin-right:auto}.edtools[hidden],.edtools button[hidden]{display:none}
+.edstat{font-size:13px;color:var(--mut);white-space:nowrap}.edstat.bad{color:var(--warn);font-weight:600}
+body.edbig .skip,body.edbig header.top,body.edbig nav.side,body.edbig aside.right,body.edbig nav.bottom{display:none!important}
+body.edbig .layout{display:block;min-height:0}body.edbig main{max-width:none;padding:0}body.edbig main>:not(form.draft):not(.err){display:none}
+body.edbig form.draft>fieldset{margin:0;padding:0;border:0;border-radius:0}body.edbig form.draft>fieldset>legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+body.edbig .edhost iframe{height:calc(var(--vh,100vh) - var(--sb,52px));min-height:240px;border:0}
+body.edbig .savebar{padding:6px 10px;flex-wrap:nowrap}body.edbig .savebar>.mut,body.edbig .savebar .edhint{display:none}
+.edinfo{position:fixed;left:0;right:0;top:0;max-height:calc(var(--vh,100vh) - var(--sb,52px));overflow:auto;z-index:6;background:var(--bg);border-bottom:2px solid var(--primary);box-shadow:0 4px 16px rgba(0,0,0,.25);padding:0 12px 12px}.edinfo[hidden]{display:none}
+.edinfo-h{display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:1}
+body.edbig .edinfo>fieldset{margin:10px 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px}
+@media (max-width:767px){body.edbig main{padding:0}.edhint{display:none}}
 .card.dochtml{overflow-x:auto}.card.dochtml table{border-collapse:collapse;margin:6px 0}
 .card.dochtml th,.card.dochtml td{border:1px solid var(--line);padding:4px 6px}
 body.oo{height:100vh;display:flex;flex-direction:column;overflow:hidden}.oo-bar{display:flex;gap:10px;align-items:center;padding:6px 12px;background:var(--side);border-bottom:1px solid var(--line);flex-wrap:wrap}.oo-wrap{flex:1;min-height:0}.oo-wrap>*{width:100%;height:100%;border:0;display:block}
@@ -372,7 +387,7 @@ def make_handler(app: App):
                 doc_body = shell(self, app, me, body, box)
             doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8>"
                    f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=12'></head>"
+                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=13'></head>"
                    f"<body>{doc_body}</body></html>")
             return doc.encode("utf-8")
 
@@ -403,6 +418,8 @@ def make_handler(app: App):
                 if self.sess:
                     app.logout(self.cookie())
                 r = redirect("/login")
+                # 기안 자동 저장의 이 브라우저 사본(localStorage) 등 지움 — 같은 기기 다음 사용자에게 남지 않게(보안 출처에서만 동작)
+                r.headers["Clear-Site-Data"] = '"storage"'
                 r.headers["Set-Cookie"] = f"{COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
                 return r
             user = self.need_login()
@@ -572,9 +589,38 @@ def make_handler(app: App):
         def _split(self, s):
             return [x.strip() for x in (s or "").split(",") if x.strip()]
 
+        def _auto_json(self, status, obj):
+            return Resp(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                        {"Content-Type": "application/json; charset=utf-8"})
+
+        def _auto_done(self, m):
+            """자동 저장 응답: 문서 번호·고칠 주소·저장 시각(편집기 화면이 상태 줄·주소를 바꿈)."""
+            return self._auto_json(200, {"ok": True, "id": m["id"], "edit": f"/doc/{int(m['id'])}/edit",
+                                         "at": m.get("autosaved") or m.get("updated") or core.now_iso()})
+
+        def _set_new_folders(self, user, did):
+            """새 기안 화면에서 자동 저장으로 먼저 만들어진 문서: 그 화면의 '보관 폴더' 선택을 저장 때마다 반영(바뀐 것만 감사)."""
+            if self.form.get("folders_new") and self.form.get("tags"):
+                from .web_filing import _list
+                app.doc_set_folders(user, did, _list(self, "folder"))
+
         def r_new(self, user):
             if self.method == "POST":
                 f = self.form
+                if f.get("go") == "auto":  # 자동 저장(첫 저장 = 임시저장 문서 만들기). 첨부는 손으로 저장·상신 때만
+                    if f.get("source_id") and f.get("copy_atts"):  # 원문 첨부 복사는 손으로 저장·상신 때 한 번(자동 저장이 미리 복사하지 않음)
+                        return self._auto_json(400, {"ok": False, "error": "원문 첨부를 가져오는 기안은 임시저장·상신 때 저장됩니다"})
+                    try:
+                        fd = app.form_get(user, f["form"]) if f.get("form") else None
+                        m = app.create_draft(user, f.get("title") or AUTO_TITLE, f.get("body", ""),
+                                             self._split(f.get("line")), self._split(f.get("cc")),
+                                             "dept" if f.get("dept_open") else "private", (), auto=True,
+                                             doc_type=f.get("doc_type") or "general", amount=f.get("amount") or None,
+                                             form=fd and fd["code"], fields=fd and self._fields(fd),
+                                             doc_html=f.get("doc_html"), doc_page=f.get("doc_page"), **_draft_kw(self))
+                    except core.GyeolError as e:
+                        return self._auto_json(400, {"ok": False, "error": str(e)})
+                    return self._auto_done(m)
                 try:
                     fd = app.form_get(user, f["form"]) if f.get("form") else None
                     m = app.create_draft(user, f.get("title"), f.get("body", ""), self._split(f.get("line")),
@@ -589,15 +635,17 @@ def make_handler(app: App):
                 if f.get("go") == "save":
                     return redirect(f"/doc/{m['id']}/edit?saved=1")
                 return redirect(f"/doc/{m['id']}?submitted=1")
+            from .web_ui import autosave_note
+            note = autosave_note(app, user)
             if self.qs.get("form"):
                 fd = app.form_get(user, self.qs["form"])
-                return self.ok("기안", f"<h2>새 기안 · {esc(fd['name'])}</h2>"
+                return self.ok("기안", f"{note}<h2>새 기안 · {esc(fd['name'])}</h2>"
                                + self.doc_form("/new", {"form": {"code": fd["code"], "version": fd["version"]}}))
             if "type" not in self.qs or not app.freeform_allowed():
                 from .web_ui import form_chooser
-                return form_chooser(self, app, user)
+                return form_chooser(self, app, user, note)
             t = self.qs.get("type") if self.qs.get("type") in pol.DOC_TYPES else "general"
-            return self.ok("기안", f"<h2>새 기안 · {pol.DOC_TYPES[t]}</h2>" + self.doc_form("/new", {"doc_type": t}))
+            return self.ok("기안", f"{note}<h2>새 기안 · {pol.DOC_TYPES[t]}</h2>" + self.doc_form("/new", {"doc_type": t}))
 
         def r_export(self, user, did, fmt):
             """HWPX/DOCX 내려받기(문서를 볼 수 있는 사람만, 아니면 404). 편집기 문서 = 저장된 정본 HTML·용지,
@@ -630,11 +678,28 @@ def make_handler(app: App):
                 return Resp(200, data, {"Content-Type": "application/octet-stream",
                                         "Content-Disposition": f"attachment; filename=\"download\"; filename*=UTF-8''{q}"})
             if act == "edit":
+                if self.method == "POST" and self.form.get("go") == "auto":  # 자동 저장: 첨부·첨부 삭제는 빼고
+                    f = self.form
+                    try:
+                        m0 = app.show(user, did, mark_read=False)
+                        fd = self._fd(m0) if m0.get("form") else None
+                        m = app.edit_draft(user, did, f.get("title") or AUTO_TITLE, f.get("body", ""),
+                                           self._split(f.get("line")), self._split(f.get("cc")),
+                                           "dept" if f.get("dept_open") else "private", (), (),
+                                           doc_type=f.get("doc_type") or "general", amount=f.get("amount") or "",
+                                           fields=self._fields(fd) if fd else None, doc_html=f.get("doc_html"),
+                                           doc_page=f.get("doc_page"), auto=True, **_draft_kw(self, new=False))
+                        self._set_new_folders(user, did)  # 저장된 뒤(남의 문서·상신된 문서면 위에서 이미 거절)
+                    except core.GyeolError as e:
+                        return self._auto_json(400, {"ok": False, "error": str(e)})
+                    return self._auto_done(m)
                 if self.method == "POST":
                     f = self.form
                     try:
                         m0 = app.show(user, did, mark_read=False)
                         fd = self._fd(m0) if m0.get("form") else None
+                        if m0["can"]["edit"]:  # 폴더(새 기안 화면에서 고른 것)는 저장보다 먼저 — 폴더 오류면 아무것도 안 바뀜
+                            self._set_new_folders(user, did)
                         app.edit_draft(user, did, f.get("title"), f.get("body", ""), self._split(f.get("line")),
                                        self._split(f.get("cc")), "dept" if f.get("dept_open") else "private",
                                        self.files, [int(x) for x in self.form_list("remove") if x.isdigit()],
@@ -643,7 +708,7 @@ def make_handler(app: App):
                                        doc_page=f.get("doc_page"), **_draft_kw(self, new=False))
                         if f.get("go") == "submit":
                             app.submit(user, did)
-                    except core.Invalid as e:
+                    except (core.Invalid, core.NotFound) as e:
                         m = app.show(user, did, mark_read=False)
                         return Resp(400, self.page("수정", f"<h2>기안 수정</h2>"
                                                          f"{self.doc_form(f'/doc/{did}/edit', self._form_doc(m), str(e))}"))

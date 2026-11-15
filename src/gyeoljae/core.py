@@ -83,6 +83,9 @@ def _retry_io(fn, *a):
             time.sleep(0.05 * (i + 1))
 
 
+AUTO_TITLE = "(제목 없음 · 자동 저장)"  # 제목을 쓰기 전에 자동 저장된 기안의 자리 이름(임시저장함에 보임, 상신 불가)
+
+
 class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, FilingMixin, ServerConfMixin,
           OnlyOfficeMixin):
     def __init__(self, data_dir=None):
@@ -690,10 +693,16 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
 
     def create_draft(self, actor, title, body, line=None, cc=(), visibility="private", attachments=(), submit=False,
                      doc_type="general", amount=None, form=None, fields=None, doc_html=None, doc_page=None,
-                     dclass=None, projects=None, folders=None, source_id=None, copy_attachments=False):
-        """line: 정책 없는 부서=전체 결재선('!'=전결), 정책 부서=추가 결재자(앞에 붙음).
+                     dclass=None, projects=None, folders=None, source_id=None, copy_attachments=False, auto=False):
+        """auto: 기안 화면의 자동 저장(임시저장과 같은 문서·권한, 감사는 기안 1건 + detail auto). 제출 불가.
+        제목 자리 이름 AUTO_TITLE 은 자동 저장만 씀(손으로 저장·상신은 거절).
+        line: 정책 없는 부서=전체 결재선('!'=전결), 정책 부서=추가 결재자(앞에 붙음).
         dclass: 부서 분류 id(None=양식 기본값, 'none'/0=미분류), projects: 사업 id 목록, folders: 내 폴더 id 목록.
         source_id: "이 문서로 기안"의 원문(볼 수 있어야 함) — copy_attachments 면 원문 첨부를 새 파일로 복사."""
+        if auto and submit:
+            raise Invalid("자동 저장은 상신하지 않습니다")
+        if not auto and title == AUTO_TITLE:
+            raise Invalid("제목을 입력하세요")
         title, body = self._check_text(title, body)
         if visibility not in ("private", "dept"):
             raise Invalid("visibility는 private|dept")
@@ -760,7 +769,9 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
             dd.mkdir(parents=True)
             self._store_attachments(did, meta, attachments)
             self._hist(meta, actor, "draft")
-            self._audit(c, actor, "draft", did, {"title": title})
+            if auto:
+                meta["autosaved"] = ts
+            self._audit(c, actor, "draft", did, {"title": title, **({"auto": True} if auto else {})})
             self._audit_folders(c, actor, did, put)
             if src_meta is not None:
                 self._audit(c, actor, "draft_from", did, {"source": int(source_id), "source_number": src_meta.get("number"),
@@ -784,7 +795,11 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
 
     def edit_draft(self, actor, doc_id, title=None, body=None, line=None, cc=None, visibility=None,
                    add_attachments=(), remove_attachments=(), doc_type=None, amount=None, fields=None, doc_html=None,
-                   doc_page=None, dclass=_KEEP, projects=None):
+                   doc_page=None, dclass=_KEEP, projects=None, auto=False):
+        """auto: 자동 저장 — 감사·이력은 손으로 저장(edit)·상신 사이 자동 저장 묶음마다 1건('autosave')만,
+        meta['autosaved'] 에 마지막 자동 저장 시각(손으로 저장·상신하면 지움 = '이어 쓰기' 안내 대상 표시)."""
+        if not auto and title == AUTO_TITLE:
+            raise Invalid("제목을 입력하세요")
         with self._tx() as c:
             self._editable(c, actor, doc_id)
             self._set_tags_c(c, actor, int(doc_id), _KEEP if dclass is _KEEP else (0 if dclass in (None, "none") else dclass),
@@ -839,8 +854,15 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
             meta["rev"] = meta.get("rev", 0) + 1
             meta["submitted"] = None  # 재상신 전까지 결재선·부서장에게 숨김
             c.execute("delete from doc_party where doc_id=? and kind='proxy'", (doc_id,))
-            self._hist(meta, actor, "edit")
-            self._audit(c, actor, "edit", doc_id, {"title": t})
+            if not auto:
+                meta.pop("autosaved", None)
+                self._hist(meta, actor, "edit")
+                self._audit(c, actor, "edit", doc_id, {"title": t})
+            else:
+                if not meta.get("autosaved"):  # 이번 자동 저장 묶음의 첫 저장만 기록
+                    self._hist(meta, actor, "autosave")
+                    self._audit(c, actor, "autosave", doc_id, {"title": t})
+                meta["autosaved"] = now_iso()
             self._index(c, meta, b)
             self._write_doc(c, meta, b)
         return self.show(actor, doc_id, mark_read=False)
@@ -853,6 +875,9 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
 
     def _do_submit(self, c, actor, meta):
         """상신: 서버가 최신 정책으로 결재선을 다시 만든다(클라이언트 값 불신). 사용된 정책 버전을 meta 에 기록."""
+        if meta.get("title") == AUTO_TITLE:
+            raise Invalid("제목을 입력하세요")
+        meta.pop("autosaved", None)
         self._line_inputs(meta)
         u = self._user(c, actor)
         self._require_form(c, meta.get("form"))  # 자유 기안 우회 차단(상신 시 다시)
@@ -1132,6 +1157,19 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
                 "dept": "d.status='done' and d.dept=:dept and (d.visibility='dept' or :is_head=1)",
             }[box]
             return self._rows(c, f"{w} and {self._VIS}", args)
+
+    def autosaved_drafts(self, actor, limit=3):
+        """자동 저장만 되고(손으로 저장·상신 전) 남은 내 기안 — 최근 순. '새 기안'에서 이어 쓰기 안내용."""
+        out = []
+        for r in self.list_box(actor, "drafts"):
+            try:
+                meta, _ = self._read_doc(int(r["id"]))
+            except (OSError, ValueError, KeyError):
+                continue
+            if meta.get("drafter") == actor and meta.get("autosaved"):
+                out.append({"id": int(r["id"]), "title": meta.get("title", ""), "autosaved": meta["autosaved"]})
+        out.sort(key=lambda x: x["autosaved"], reverse=True)
+        return out[:limit]
 
     def box_counts(self, actor):
         return {b: len(self.list_box(actor, b)) for b in ("inbox", "drafts", "cc")}

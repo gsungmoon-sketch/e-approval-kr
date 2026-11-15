@@ -242,7 +242,8 @@ def draft_form(h, app, user, action, m=None, err=""):
             f"<label for=cc>참조</label><input type=text id=cc name=cc list=users value='{esc(','.join(cc_in))}' autocomplete=off>"
             f"</fieldset><fieldset class=card><legend>③ {'서식·' if fd else ''}본문</legend><div class=edfb>{pre_f}</div>"
             f"<label for=ti>제목</label>"
-            f"<input type=text id=ti name=title maxlength={core.MAX_TITLE} required value='{esc(m.get('title'))}'"
+            f"<input type=text id=ti name=title maxlength={core.MAX_TITLE} required "
+            f"value='{esc('' if m.get('title') == core.AUTO_TITLE else m.get('title'))}'"
             f"{' placeholder=' + chr(39) + esc(fd['title_hint']) + chr(39) if fd and fd.get('title_hint') else ''}>"
             f"<div class=edfb>{mid_f if fd else ''}"
             f"<label for=bd>본문</label><textarea id=bd name=body>"
@@ -309,14 +310,37 @@ def editor_host(h, fd, m):
         page = hanword.parse_page(m.get("doc_page")) or hanword.GOV
     except ValueError:
         page = hanword.GOV
-    return (f"<div id=edhost class=edhost hidden data-page='{esc(json.dumps(page))}'>"
+    # 자동 저장(editor-host.js): 이 브라우저 사본의 열쇠 = 사용자 + 문서 번호(새 기안이면 양식·종류)
+    akey = str(m["id"]) if m.get("id") else "new:" + ((fd or {}).get("code") or m.get("doc_type") or "general")
+    if m.get("source_id"):
+        akey += ":from" + str(int(m["source_id"]))
+    me = getattr(h, "me", None) or {}
+    return (f"<div id=edhost class=edhost hidden data-page='{esc(json.dumps(page))}' data-user='{esc(me.get('username', ''))}' "
+            f"data-akey='{esc(akey)}'>"
             f"<p id=ederr class='banner warn' role=alert hidden></p>"
             f"<iframe id=edframe title='문서 편집기'></iframe></div>"
             f"<textarea id=docinit hidden aria-hidden=true>{esc(init)}</textarea>"
-            f"<script src='/static/img-shrink.js?v=2' defer></script><script src='/static/editor-host.js?v=5' defer></script>")
+            f"<script src='/static/img-shrink.js?v=2' defer></script><script src='/static/editor-host.js?v=6' defer></script>"
+            f"<script src='/static/editor-view.js?v=1' defer></script>")
 
 
-def form_chooser(h, app, user):
+def autosave_note(app, user):
+    """'새 기안'에 들어올 때: 자동 저장만 되고 손으로 저장·상신하지 않은 내 기안이 있으면 이어 쓰기를 먼저 권함.
+    새로 쓰기를 골라도 그 문서는 임시저장함에 그대로 남는다(지우지 않음)."""
+    try:
+        ds = app.autosaved_drafts(user)
+    except core.GyeolError:
+        return ""
+    if not ds:
+        return ""
+    li = "".join(f"<li><a class=btn href='/doc/{d['id']}/edit'>작성 중이던 문서를 이어서 쓰기</a> <b>{esc(d['title'])}</b> "
+                 f"<span class=mut>자동 저장 {esc(d['autosaved'][5:16].replace('T', ' '))}</span></li>" for d in ds)
+    return (f"<section class='banner ok autosaved' role=status><p>작성 중이던 문서가 있습니다.</p><ul class=items>{li}</ul>"
+            f"<p class=mut>새로 쓰려면 아래에서 고르세요. 이어 쓰지 않은 문서는 <a href='/box/drafts'>임시저장함</a>에 남아 있습니다.</p>"
+            f"</section>")
+
+
+def form_chooser(h, app, user, note=""):
     """① 양식 선택: 즐겨찾기·최근·분류별."""
     from . import formdef as fdm
     forms = app.forms_list(user)
@@ -342,7 +366,7 @@ def form_chooser(h, app, user):
             out += f"<section class=card><h3>{cat}</h3><ul class=forms>" + "".join(card(f) for f in fs) + "</ul></section>"
     if not forms:
         out = "<p class='card empty'>쓸 수 있는 양식이 없습니다. 관리자에게 문의하세요.</p>"
-    return h.ok("기안 · 양식 선택", f"<h2>새 기안 · ① 양식 선택</h2>{out}")
+    return h.ok("기안 · 양식 선택", f"{note}<h2>새 기안 · ① 양식 선택</h2>{out}")
 
 
 def _size(n):
