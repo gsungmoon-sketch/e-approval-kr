@@ -42,7 +42,11 @@ def pager(total, page, base):
     return f"<nav class=pager aria-label='쪽'>{prev}{links}{nxt}</nav><p class=mut>총 {total}건</p>"
 
 
-def list_table(rows, page=1, base="", caption="문서 목록", inbox=False):
+EDITABLE = ("draft", "withdrawn", "rejected")
+
+
+def list_table(rows, page=1, base="", caption="문서 목록", inbox=False, editor=None):
+    """editor: 이 사용자의 고칠 수 있는 문서(기안중·회수·반려)에 '이어 쓰기' 단추 칸(임시저장함·반려함)."""
     if not rows:
         return ("<div class='card empty'><p>문서가 없습니다.</p><p><a href='/new'>✍ 기안하기</a> · "
                 "<a href='/'>홈으로</a></p></div>")
@@ -55,10 +59,19 @@ def list_table(rows, page=1, base="", caption="문서 목록", inbox=False):
         f"<td data-l='기안자'>{esc(r.get('drafter_name') or r['drafter'])}</td>"
         f"<td data-l='기안일'>{esc((r.get('submitted') or r['created'])[:10])}</td>"
         f"<td data-l='상태'>{chip(r['status'], inbox and _days(r.get('submitted')) > 3)}</td>"
-        f"<td data-l='현재 결재'>{esc(r.get('cur_name') or '-')}</td></tr>" for r in part)
+        f"<td data-l='현재 결재'>{esc(r.get('cur_name') or '-')}</td>{_edit_td(r, editor)}</tr>" for r in part)
     return (f"<table class=list><caption class=sr-only>{esc(caption)}</caption><thead><tr><th scope=col>문서번호</th>"
             f"<th scope=col>제목</th><th scope=col>기안자</th><th scope=col>기안일</th><th scope=col>상태</th>"
-            f"<th scope=col>현재 결재</th></tr></thead><tbody>{tr}</tbody></table>{pager(total, page, base)}")
+            f"<th scope=col>현재 결재</th>{'<th scope=col>작성</th>' if editor else ''}</tr></thead><tbody>{tr}</tbody>"
+            f"</table>{pager(total, page, base)}")
+
+
+def _edit_td(r, editor):
+    if not editor:
+        return ""
+    if r.get("drafter") != editor or r.get("status") not in EDITABLE:
+        return "<td class=act></td>"
+    return f"<td class=act><a href='/doc/{int(r['id'])}/edit' class='btn go'>✏ 이어 쓰기</a></td>"
 
 
 def stamp_table(m, me):
@@ -105,7 +118,11 @@ def doc_view(h, app, user, m, err="", comment=""):
     hist = "".join(f"<li><span class=mut>{esc(x['at'][5:16])}</span> {esc(x['actor'])} {esc(x['action'])}"
                    f"{' “' + esc(x.get('comment')) + '”' if x.get('comment') else ''}</li>" for x in m["history"])
     c = h.csrf()
-    bar = (f"<a href='/box/inbox' class=btn>← 목록</a> {chip(m['status'])} "
+    mine_edit = m["can"]["edit"]
+    back = {"draft": "/box/drafts", "withdrawn": "/box/drafts", "rejected": "/box/rejected"}.get(m["status"]) \
+        if mine_edit else "/box/inbox"
+    bar = (f"<a href='{back}' class=btn>← 목록</a> {chip(m['status'])} "
+           + (f"<a href='/doc/{did}/edit' class='btn go'>✏ 이어 쓰기·고치기</a> " if mine_edit else "") +
            f"<a href='/doc/{did}/print' class='btn noprint' target=_blank rel=noopener>🖨 인쇄</a>")
     from . import hanword
     if hanword.available():
@@ -129,6 +146,11 @@ def doc_view(h, app, user, m, err="", comment=""):
         act += (f"<a href='/doc/{did}/edit' class=btn>수정</a> <form method=post action='/doc/{did}/submit' class=inline>"
                 f"{c}<button>상신</button></form>")
     done = ""
+    if mine_edit:  # 임시저장·회수·반려 문서: 무엇을 하면 되는지 위에 바로
+        what = {"draft": "임시저장된 문서입니다(아직 상신 전).", "withdrawn": "회수한 문서입니다.",
+                "rejected": "반려된 문서입니다."}[m["status"]]
+        done = (f"<p class='banner ok noprint' role=status>{what} <a href='/doc/{did}/edit'>이어 쓰기·고치기</a>로 계속 "
+                f"작성하고 상신하세요 — 결재선·참조·분류·첨부는 저장한 그대로 열립니다.</p>")
     q = h.qs.get("done")
     if q in ("approve", "reject"):
         left = len(app.list_box(user, "inbox"))

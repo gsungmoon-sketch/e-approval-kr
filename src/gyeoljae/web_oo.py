@@ -116,7 +116,7 @@ def route(h, app, user, p):
     back = f"/doc/{ident}" if kind == "d" else f"/files/{ident}"
     doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8>"
            f"<meta name=viewport content='width=device-width,initial-scale=1'><title>{esc(r['name'])} - 결재</title>"
-           f"<link rel=stylesheet href='/s.css?v=12'></head><body class=oo>"
+           f"<link rel=stylesheet href='/s.css?v=14'></head><body class=oo>"
            f"<header class=oo-bar><a href='{back}'>← 돌아가기</a> <b>{esc(r['name'])}</b> "
            f"<span class=mut>{'편집' if r['mode'] == 'edit' else '보기'}</span>"
            f"{' <span class=mut>· 창을 닫으면 잠시 뒤 새 판으로 저장됩니다</span>' if r['mode'] == 'edit' else ''}"

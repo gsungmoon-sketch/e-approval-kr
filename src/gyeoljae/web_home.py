@@ -137,11 +137,20 @@ def home_page(h, app, user):
     if not any(d[k]["count"] for k in ("inbox", "progress", "done", "rejected")) and not d["drafts"]:
         empty = ("<p class='card hint'>아직 문서가 없습니다. 위의 <b>기안하기</b>에서 양식을 골라 첫 문서를 올려 보세요. "
                  "결재선은 부서 결재규정에 따라 자동으로 정해집니다.</p>")
+    dl = d.get("draft_items") or []
+    drafts = ""
+    if dl:
+        li = "".join(f"<li><a href='/doc/{int(r['id'])}/edit' class='btn go'>✏ 이어 쓰기</a> "
+                     f"<a href='/doc/{int(r['id'])}/edit'>{esc(r['title'])}</a> {chip(r['status'])} <span class=mut>"
+                     f"{esc((r.get('updated') or r.get('created') or '')[5:16].replace('T', ' '))}</span></li>" for r in dl)
+        more = f"<a href='/box/drafts' class=more>전체 보기({d['drafts']})</a>" if d["drafts"] > len(dl) else ""
+        drafts = (f"<section class='card dash drafts'><h3><a href='/box/drafts'>작성 중인 문서 (임시저장)</a> "
+                  f"<span class=num>{d['drafts']}</span></h3><ul class='items edits'>{li}</ul>{more}</section>")
     body = (f"<section class=card><h3><a href='/board/notice'>공지사항</a> <span class=mut>새 글 {no['new']}</span></h3>"
             f"<ul class=items>{nl}</ul></section>"
             f"<section class='card quick'><span class=lbl>✍ 기안하기</span> {types}"
             f"<form method=get action='/search' class=inline role=search><input type=text name=q placeholder='제목·본문 검색'>"
-            f" <button class=sec>찾기</button></form></section>{empty}<div class=grid>{cards}</div>"
+            f" <button class=sec>찾기</button></form></section>{empty}{drafts}<div class=grid>{cards}</div>"
             f"<p class=mut><a href='/msg'>쪽지 안 읽음 {d['unread_messages']}</a>"
             f"{' · <a href=/mail>메일 안 읽음 ' + str(d['unread_mail']) + '</a>' if d.get('unread_mail') is not None else ''}"
             f" · <a href='/box/cc'>참조 {d['cc']}</a> · <a href='/box/drafts'>기안함·임시저장 {d['drafts']}</a></p>")

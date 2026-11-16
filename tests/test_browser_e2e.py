@@ -577,6 +577,84 @@ class BrowserE2ETest(unittest.TestCase):
         self.assertEqual([r["status"] for r in rows], ["pending"], rows)
         self.assertEqual(self.errors, [])
 
+    def test_9_reopen_draft_keeps_line_cc_folder(self):  # 임시저장 문서 이어 쓰기: 홈·임시저장함·문서 화면에서 바로, 값 그대로(PC·작은 화면)
+        app = App(str(self.data))
+        fid = app.folder_create("dev1", "이어쓰기 폴더")["id"]
+        pg = self.login("dev1")
+        fr, frame = self.open_editor(pg, "이어 쓰기 E2E")
+        pg.fill("#ln", "devlead!")
+        pg.fill("#cc", "hr")
+        pg.check("input[name=dept_open]")
+        pg.check(f"input[name=folder][value='{fid}']")
+        self.type_text(fr, "이어 쓸 본문")
+        pg.wait_for_function("() => /자동 저장됨/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        did = int(re.search(r"/doc/(\d+)/edit", pg.url).group(1))
+
+        def same(p, where):
+            m = app.show("dev1", did, mark_read=False)
+            self.assertEqual((m["line_input"], m["cc_input"], m["visibility"]), (["devlead!"], ["hr"], "dept"), where)
+            self.assertEqual([f["id"] for f in app.doc_tags("dev1", did)["folders"]], [fid], where)
+            self.assertEqual(p.input_value("#ti"), "이어 쓰기 E2E", where)
+            self.assertEqual(p.input_value("#ln"), "devlead!", where)
+            self.assertEqual(p.input_value("#cc"), "hr", where)
+            self.assertTrue(p.is_checked("input[name=dept_open]"), where)
+
+        # 손 저장 → 다시 열린 고치기 화면, 값 그대로
+        with pg.expect_navigation(url=re.compile(r"saved=1")):
+            pg.click("button[name=go][value=save]")
+        fr, frame = self.wait_editor(pg)
+        self.assertIn("이어 쓸 본문", self.page_text(frame))
+        same(pg, "손 저장 뒤")
+        # 고치기 화면에서 자동 저장 → 결재선·참조·폴더 그대로
+        self.type_text(fr, "두 번째 글")
+        pg.wait_for_function("() => /자동 저장됨/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        same(pg, "고치기 화면 자동 저장 뒤")
+        # 홈 → 이어 쓰기(한 번에 고치기 화면)
+        with pg.expect_navigation():
+            pg.click("nav.side a[href='/']")
+        btn = pg.locator(f"section.drafts a.btn[href='/doc/{did}/edit']")
+        self.assertTrue(btn.is_visible())
+        btn.click()
+        fr, frame = self.wait_editor(pg)
+        self.assertIn("두 번째 글", self.page_text(frame))
+        same(pg, "홈에서 이어 쓰기")
+        # 작은 화면: 임시저장함 → 이어 쓰기 단추가 보이고 누르면 바로 고치기
+        sm = self.login("dev1", size=(390, 844))
+        sm.goto(self.base + "/box/drafts")
+        b = sm.locator(f"td.act a[href='/doc/{did}/edit']")
+        self.assertTrue(b.is_visible())
+        box = b.bounding_box()
+        self.assertLessEqual(box["x"] + box["width"], 390, "작은 화면에서 가로로 넘치지 않음")
+        b.click()
+        sm.wait_for_url(re.compile(rf"/doc/{did}/edit$"))
+        same(sm, "작은 화면 임시저장함")
+        # 문서 화면: 위 막대의 이어 쓰기 단추
+        sm.goto(f"{self.base}/doc/{did}")
+        top = sm.locator(f"div.bar a.btn.go[href='/doc/{did}/edit']")
+        self.assertTrue(top.is_visible())
+        self.assertLess(top.bounding_box()["y"], 844, "첫 화면 안")
+        # 이 브라우저 사본 되살리기도 결재선·참조 유지: 서버 저장 실패 중 참조를 바꾸고 떠났다가 다시 열기
+        pg.route("**/doc/*/edit", lambda r: r.abort() if r.request.method == "POST" else r.continue_())
+        pg.fill("#cc", "hr,ceo")
+        self.type_text(fr, "오프라인 고침")
+        pg.wait_for_function("() => /저장 실패/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        pg.once("dialog", lambda d: d.accept())
+        with pg.expect_navigation():
+            pg.click("nav.side a[href='/']")
+        pg.unroute("**/doc/*/edit")
+        pg.goto(f"{self.base}/doc/{did}/edit")
+        fr, frame = self.wait_editor(pg)
+        pg.wait_for_selector(".edrestore")
+        pg.click(".edrestore button:has-text('되살리기')")
+        frame.wait_for_function("() => /오프라인 고침/.test(document.getElementById('page').innerText)")
+        pg.wait_for_function("() => /자동 저장됨/.test(document.querySelector('.edstat').textContent)", timeout=20000)
+        self.assertEqual(pg.input_value("#ln"), "devlead!")
+        self.assertEqual(pg.input_value("#cc"), "hr,ceo")
+        m = app.show("dev1", did, mark_read=False)
+        self.assertEqual((m["line_input"], m["cc_input"]), (["devlead!"], ["hr", "ceo"]))
+        self.assertEqual([f["id"] for f in app.doc_tags("dev1", did)["folders"]], [fid])
+        self.assertEqual(self.errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,6 +110,16 @@ def draft_section(h, app, user, m):
         if m.get("source_attachments"):
             src += (f"<label><input type=checkbox name=copy_atts value=1{' checked' if m.get('copy_atts') else ''}>"
                     f" 원문 첨부도 가져오기 ({int(m['source_attachments'])}개)</label>")
+    elif m.get("id") and m.get("source_doc_id") and not m.get("source_atts_copied"):
+        # 자동 저장으로 먼저 생긴 '이 문서로 기안' 문서를 고치기 화면에서 다시 열어도 원문 첨부를 가져올 수 있게
+        try:
+            sm = app.show(user, int(m["source_doc_id"]), mark_read=False)
+        except core.GyeolError:
+            sm = None
+        if sm and sm.get("attachments"):
+            src = (f"<input type=hidden name=source_id value='{int(m['source_doc_id'])}'>"
+                   f"<label><input type=checkbox name=copy_atts value=1> 원문 첨부도 가져오기 "
+                   f"({len(sm['attachments'])}개, 저장·상신 때 한 번)</label>")
     if new:  # 새 기안이 자동 저장으로 먼저 만들어진 뒤에도 폴더 선택을 반영(web._set_new_folders)
         src = "<input type=hidden name=folders_new value=1>" + src
     return (f"<fieldset class=card><legend>⑤ 분류·보관</legend><input type=hidden name=tags value=1>{src}"
@@ -130,6 +140,9 @@ def draft_kwargs(h, new=True):
         if f.get("source_id", "").isdigit():
             kw["source_id"] = int(f["source_id"])
             kw["copy_attachments"] = bool(f.get("copy_atts"))
+    elif f.get("copy_atts") and f.get("source_id", "").isdigit():
+        # 새 기안 화면에서 자동 저장으로 문서가 먼저 생긴 뒤 원문 첨부 가져오기 → 손 저장 때 한 번 복사(core 가 확인)
+        kw["copy_source"] = int(f["source_id"])
     return kw
 
 

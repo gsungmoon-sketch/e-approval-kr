@@ -751,6 +751,8 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
                 c.execute("update docs set form=? where id=?", (form, did))
             if src_meta is not None:
                 meta["source_doc_id"] = int(source_id)
+                if copy_attachments:
+                    meta["source_atts_copied"] = True
                 c.execute("update docs set source_doc_id=? where id=?", (int(source_id), did))
             cid = self._default_class(c, u["dept"], form, doc_type) if dclass is None else \
                 self._check_class(c, u["dept"], 0 if dclass == "none" else dclass)
@@ -795,8 +797,10 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
 
     def edit_draft(self, actor, doc_id, title=None, body=None, line=None, cc=None, visibility=None,
                    add_attachments=(), remove_attachments=(), doc_type=None, amount=None, fields=None, doc_html=None,
-                   doc_page=None, dclass=_KEEP, projects=None, auto=False):
-        """auto: 자동 저장 — 감사·이력은 손으로 저장(edit)·상신 사이 자동 저장 묶음마다 1건('autosave')만,
+                   doc_page=None, dclass=_KEEP, projects=None, auto=False, copy_source=None):
+        """copy_source: '이 문서로 기안' 문서의 원문 id — 자동 저장으로 문서가 먼저 생긴 뒤 '원문 첨부도 가져오기'를 고른
+        손 저장에서 원문 첨부를 한 번만 복사(원문이 이 문서의 원문과 같고 아직 복사 안 했을 때만, 자동 저장은 무시).
+        auto: 자동 저장 — 감사·이력은 손으로 저장(edit)·상신 사이 자동 저장 묶음마다 1건('autosave')만,
         meta['autosaved'] 에 마지막 자동 저장 시각(손으로 저장·상신하면 지움 = '이어 쓰기' 안내 대상 표시)."""
         if not auto and title == AUTO_TITLE:
             raise Invalid("제목을 입력하세요")
@@ -840,6 +844,20 @@ class App(OrgMixin, RulesMixin, OpsMixin, HomeMixin, MailMixin, FormsMixin, Fili
                     else:
                         keep.append(a)
                 meta["attachments"] = keep
+            add_attachments = list(add_attachments or ())
+            if (copy_source is not None and not auto and meta.get("source_doc_id") == int(copy_source)
+                    and not meta.get("source_atts_copied")):
+                self._check_view(c, actor, int(copy_source))
+                src_meta, _ = self._read_doc(int(copy_source))
+                sd = self._doc_dir(int(copy_source)) / "files"
+                try:
+                    add_attachments = [(a["name"], (sd / a["stored"]).read_bytes())
+                                       for a in src_meta.get("attachments", [])] + add_attachments
+                except OSError:
+                    raise Invalid("원문 첨부 파일을 읽을 수 없습니다")
+                meta["source_atts_copied"] = True
+                self._audit(c, actor, "draft_from", doc_id, {"source": int(copy_source),
+                                                             "source_number": src_meta.get("number"), "attachments": True})
             self._store_attachments(doc_id, meta, add_attachments)
             if fd is not None:
                 self._apply_form(c, u, meta, fields if fields is not None else meta.get("fields") or {}, False,

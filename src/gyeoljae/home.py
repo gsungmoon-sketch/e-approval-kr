@@ -62,6 +62,9 @@ class HomeMixin:
             "rejected": {"count": len(rejected), "items": rejected[:n]},
             "unread_messages": self.unread_count(actor), "unread_mail": self.unread_mail_count(actor),
             "cc": len(cc), "drafts": len(drafts),
+            # 작성 중(임시저장·회수) 내 문서 — 홈에서 바로 이어 쓰기(최근 고친 순)
+            "draft_items": sorted(drafts, key=lambda r: (r.get("updated") or r.get("created") or "", r["id"]),
+                                  reverse=True)[:n],
         }
 
     def badges(self, actor):

@@ -82,7 +82,8 @@ nav.tabs a.on{background:var(--primary);color:#fff;border-color:var(--primary)}
 .num{float:right;font-size:20px;color:var(--acc)}ul.items{list-style:none;margin:0;padding:0}ul.items li{padding:4px 0;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 ul.menu{columns:2;margin:0}.more{display:inline-block;margin-top:6px;font-size:13px}.new{color:var(--badge);font-weight:700;font-size:12px}
 .quick{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.quick .lbl{font-weight:700}.quick form{margin-left:auto;display:flex;gap:6px}
-.btn{display:inline-block;padding:6px 14px;border-radius:6px;border:1px solid var(--acc);color:var(--acc);text-decoration:none;background:var(--card)}.hint{border-style:dashed}
+.btn{display:inline-block;padding:6px 14px;border-radius:6px;border:1px solid var(--acc);color:var(--acc);text-decoration:none;background:var(--card)}
+.btn.go{background:var(--acc);color:var(--acc-fg);font-weight:700;white-space:nowrap}ul.items.edits li{white-space:normal;padding:6px 0}td.act{white-space:nowrap}.hint{border-style:dashed}
 .chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:700;color:#1A1F2B;background:var(--chip-w);white-space:nowrap}
 .chip.p{background:var(--chip-p)}.chip.d{background:var(--chip-d)}.chip.r{background:var(--chip-r)}.chip.w{background:var(--chip-w)}.chip.late{background:var(--chip-l)}
 .banner{border-radius:8px;padding:10px 14px;margin:10px 0;font-weight:600;color:#1A1F2B}.banner.ok{background:var(--chip-d)}.banner.warn{background:var(--chip-r)}
@@ -387,7 +388,7 @@ def make_handler(app: App):
                 doc_body = shell(self, app, me, body, box)
             doc = (f"<!doctype html><html lang=ko><head><meta charset=utf-8>"
                    f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=13'></head>"
+                   f"<title>{esc(title)} - 결재</title><link rel=stylesheet href='/s.css?v=14'></head>"
                    f"<body>{doc_body}</body></html>")
             return doc.encode("utf-8")
 
@@ -522,15 +523,16 @@ def make_handler(app: App):
             p = self.qs.get("page", "1")
             return int(p) if p.isdigit() and 0 < int(p) < 100000 else 1
 
-        def table(self, rows, base="", inbox=False):
+        def table(self, rows, base="", inbox=False, editor=None):
             from .web_ui import list_table
-            return list_table(rows, self.page_no(), base or self.path.split("?")[0], inbox=inbox)
+            return list_table(rows, self.page_no(), base or self.path.split("?")[0], inbox=inbox, editor=editor)
 
         def r_box(self, user, box):
             rows = app.list_box(user, box)
             if box == "inbox":
                 rows.sort(key=lambda r: (r["submitted"] or "", r["id"]))  # 오래된 순
-            return self.ok(BOX_KO[box], f"<h2>결재 › {BOX_KO[box]}</h2>{self.table(rows, f'/box/{box}', box == 'inbox')}",
+            edit_by = user if box in ("drafts", "rejected") else None  # 내 임시저장·반려 문서 → '이어 쓰기' 단추
+            return self.ok(BOX_KO[box], f"<h2>결재 › {BOX_KO[box]}</h2>{self.table(rows, f'/box/{box}', box == 'inbox', edit_by)}",
                            box)
 
         def user_datalist(self):
